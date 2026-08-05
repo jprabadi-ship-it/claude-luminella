@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claude Luminella — Luminella を Claude Code のステータスランプにする</title>
-<meta name="description" content="BRAIN MAGIC Luminella のグロウリングで Claude Code の状態を表示。許可プロンプトが出たら橙に点滅し、物理ボタンで許可・拒否できます。macOS メニューバー常駐アプリ。">
+<meta name="description" content="BRAIN MAGIC Luminella のグロウリングで Claude Code の状態を表示。許可プロンプトが出たら橙に点滅し、物理ボタンで許可・拒否。スティックを倒している間だけ喋って文字起こしもできます。macOS メニューバー常駐アプリ。">
 <link rel="canonical" href="https://claude-luminella.gigowat.com/index.ja.html">
 <link rel="alternate" hreflang="ja" href="https://claude-luminella.gigowat.com/index.ja.html">
 <link rel="alternate" hreflang="en" href="https://claude-luminella.gigowat.com/index.en.html">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Claude Luminella">
 <meta property="og:title" content="Claude Luminella — Luminella を Claude Code のステータスランプにする">
-<meta property="og:description" content="BRAIN MAGIC Luminella のグロウリングで Claude Code の状態を表示。許可プロンプトが出たら橙に点滅し、物理ボタンで許可・拒否できます。">
+<meta property="og:description" content="BRAIN MAGIC Luminella のグロウリングで Claude Code の状態を表示。物理ボタンで許可・拒否、スティックを倒して喋れば文字起こし。">
 <meta property="og:url" content="https://claude-luminella.gigowat.com/index.ja.html">
 <meta property="og:locale" content="ja_JP">
 <meta name="twitter:card" content="summary">
@@ -23,7 +23,7 @@
 <header>
   <div class="wrap">
     <h1>Claude Luminella</h1>
-    <p class="tagline">Luminella を Claude Code のステータスランプと承認ボタンにする。<br>いま何をしているか、画面を見なくても分かる。</p>
+    <p class="tagline">Luminella を Claude Code のステータスランプと承認ボタンにする。<br>倒して喋れば、そのまま文字になる。</p>
     <div class="cta">
       <a class="button" href="#download">無料でダウンロード</a>
       <a class="button secondary" href="#features">できること</a>
@@ -70,6 +70,10 @@
         <p>ケーブルを抜くと接続が切れたことを検知し、挿し直すと自動で復帰します。アプリを起動し直す必要はありません。</p>
       </div>
       <div class="card">
+        <h3>押して話す</h3>
+        <p>スティックを倒している間だけ録音し、戻すと文字に起こしてクリップボードに入れます。長いプロンプトを打つ代わりに、手元で喋って貼り付けられます。音声はこの Mac の中だけで処理されます。</p>
+      </div>
+      <div class="card">
         <h3>メニューバーだけ</h3>
         <p>Dock には出ません。メニューバーのアイコン自体が現在の状態を示します。Claude Code の起動時にアプリが立ち上がるので、常駐させておく必要もありません。</p>
       </div>
@@ -89,6 +93,8 @@
       <tr><td><strong>紫</strong></td><td>点滅</td><td>通知</td><td>画面を見る</td></tr>
       <tr><td><strong>赤</strong></td><td>点灯</td><td>拒否した／エラー</td><td>状況によります</td></tr>
       <tr><td><strong>緑</strong></td><td>点灯</td><td>許可した／応答完了</td><td>—</td></tr>
+      <tr><td><strong>ピンク</strong></td><td>呼吸</td><td>録音中（押して話す）</td><td>倒したまま喋る</td></tr>
+      <tr><td><strong>青紫</strong></td><td>点滅</td><td>文字起こし中</td><td>1秒ほど待つ</td></tr>
     </tbody></table>
     <p class="note" style="margin-top:20px">許可待ちで30秒操作がなければ、リングは実行中に戻り、通常どおり画面のプロンプトで操作できます。待ち時間も変更できます。</p>
   </div>
@@ -97,22 +103,35 @@
 <section id="requirements">
   <div class="wrap">
     <h2>必要な環境</h2>
-    <p class="lede">macOS の特別な許可は必要ありません。USB シリアル通信のみで、アクセシビリティも入力監視も使いません。</p>
+    <p class="lede">状態表示と許可・拒否だけなら、macOS の特別な許可は必要ありません。アクセシビリティも入力監視も使いません。</p>
     <table>
       <tbody><tr><th>項目</th><th>内容</th></tr>
       <tr><td>OS</td><td>macOS 12 以降</td></tr>
       <tr><td>CPU</td><td>Apple Silicon（M1 以降）専用。Intel Mac では動作しません</td></tr>
       <tr><td>デバイス</td><td>BRAIN MAGIC Luminella（USB 接続）</td></tr>
       <tr><td>ソフト</td><td>Claude Code</td></tr>
-      <tr><td>権限</td><td>不要</td></tr>
+      <tr><td>権限</td><td>不要。ただし<strong>押して話す機能を使う場合はマイクの許可</strong>が要ります</td></tr>
     </tbody></table>
+
+    <h3 style="margin-top:32px">押して話す機能を使う場合</h3>
+    <p class="lede">この機能だけは外部のソフトが必要です。アプリには同梱していません。</p>
+    <table>
+      <tbody><tr><th>用途</th><th>導入</th></tr>
+      <tr><td>録音</td><td><code>brew install ffmpeg</code></td></tr>
+      <tr><td>文字起こし</td><td><code>pip install mlx-whisper</code></td></tr>
+    </tbody></table>
+    <p class="note" style="margin-top:20px">
+      文字起こしの本体は 180MB、音声モデルは 1GB を超えます。22MB のアプリに同梱すると釣り合わないため、外部から呼び出す形にしています。
+      <strong>初回にモデルを取得するときだけ</strong>ネットワークに接続します。それ以降は通信しません。
+    </p>
     <p class="note" style="margin-top:20px">
       <strong>Luminella Core との同時使用はできません。</strong>
       同じシリアルポートを取り合うため、どちらか一方だけが動作します。
       Luminella を Claude Code 用として使う間は Luminella Core を終了してください。
     </p>
     <p class="note">
-      ネットワーク通信は一切行いません。詳しくは<a href="privacy.ja.html">プライバシーポリシー</a>をご覧ください。
+      音声はこの Mac の中だけで処理され、外部に送信されることはありません。
+      アプリ自身がネットワーク通信を行うこともありません。詳しくは<a href="privacy.ja.html">プライバシーポリシー</a>をご覧ください。
     </p>
   </div>
 </section>
@@ -186,8 +205,18 @@
     </details>
 
     <details>
+      <summary>押して話す機能には何が必要ですか？</summary>
+      <p>マイクの許可と、<code>ffmpeg</code>（録音）、<code>mlx-whisper</code>（文字起こし）です。どちらも <code>brew install ffmpeg</code> と <code>pip install mlx-whisper</code> で入ります。文字起こしの本体とモデルで 1GB を超えるためアプリには同梱していません。この機能を使わなければ、いずれも不要です。</p>
+    </details>
+
+    <details>
+      <summary>喋った音声はどこかに送られますか？</summary>
+      <p>送られません。文字起こしはこの Mac の中で完結します。ネットワークに接続するのは、初回に音声モデルを取得するときだけです。録音した音声はテキストに変換したあと削除されます。</p>
+    </details>
+
+    <details>
       <summary>キー入力を記録していませんか？</summary>
-      <p>していません。macOS のアクセシビリティ権限も入力監視権限も要求しませんし、要求しない以上キーボードの入力を読むことはできません。読み取るのは Luminella 本体のボタンとスティックだけです。ネットワーク通信も行いません。</p>
+      <p>していません。macOS のアクセシビリティ権限も入力監視権限も要求しませんし、要求しない以上キーボードの入力を読むことはできません。読み取るのは Luminella 本体のボタンとスティックと、押して話す機能を使っている間のマイクだけです。</p>
     </details>
 
     <details>

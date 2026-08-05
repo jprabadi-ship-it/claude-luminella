@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claude Luminella — Turn your Luminella into a status light for Claude Code</title>
-<meta name="description" content="Show Claude Code's state on the BRAIN MAGIC Luminella glow ring. When a permission prompt appears the ring blinks amber, and a physical button approves or denies it. A macOS menu bar app.">
+<meta name="description" content="Show Claude Code's state on the BRAIN MAGIC Luminella glow ring. A permission prompt blinks the ring amber and a physical button answers it; hold the stick to dictate straight to the clipboard. A macOS menu bar app.">
 <link rel="canonical" href="https://claude-luminella.gigowat.com/index.en.html">
 <link rel="alternate" hreflang="ja" href="https://claude-luminella.gigowat.com/index.ja.html">
 <link rel="alternate" hreflang="en" href="https://claude-luminella.gigowat.com/index.en.html">
@@ -23,7 +23,7 @@
 <header>
   <div class="wrap">
     <h1>Claude Luminella</h1>
-    <p class="tagline">Turn your Luminella into a status light and an approval button for Claude Code.<br>See what it is doing without looking at the screen.</p>
+    <p class="tagline">Turn your Luminella into a status light and an approval button for Claude Code.<br>Hold the stick, speak, and it becomes text.</p>
     <div class="cta">
       <a class="button" href="#download">Download free</a>
       <a class="button secondary" href="#features">What it does</a>
@@ -70,6 +70,10 @@
         <p>Pull the cable and it notices; plug it back in and it reconnects on its own. No need to restart the app.</p>
       </div>
       <div class="card">
+        <h3>Push to talk</h3>
+        <p>Hold the stick over and it records; let it centre and the speech is transcribed to your clipboard. Dictate a long prompt instead of typing it. Audio never leaves this Mac.</p>
+      </div>
+      <div class="card">
         <h3>Menu bar only</h3>
         <p>No Dock icon. The menu bar icon itself shows the current state. Claude Code launches the app when a session starts, so you do not have to keep it running.</p>
       </div>
@@ -89,6 +93,8 @@
       <tr><td><strong>Purple</strong></td><td>Blinking</td><td>Notification</td><td>Look at the screen</td></tr>
       <tr><td><strong>Red</strong></td><td>Steady</td><td>Denied, or an error</td><td>Depends</td></tr>
       <tr><td><strong>Green</strong></td><td>Steady</td><td>Approved, or response finished</td><td>—</td></tr>
+      <tr><td><strong>Pink</strong></td><td>Breathing</td><td>Recording (push to talk)</td><td>Keep holding and speak</td></tr>
+      <tr><td><strong>Violet</strong></td><td>Blinking</td><td>Transcribing</td><td>Wait about a second</td></tr>
     </tbody></table>
     <p class="note" style="margin-top:20px">If nothing is pressed within 30 seconds, the ring returns to the working colour and the normal on-screen prompt takes over. The timeout is configurable.</p>
   </div>
@@ -97,22 +103,34 @@
 <section id="requirements">
   <div class="wrap">
     <h2>Requirements</h2>
-    <p class="lede">No special macOS permissions. It uses USB serial communication only — no Accessibility, no Input Monitoring.</p>
+    <p class="lede">For the status light and the approve/deny buttons, no special macOS permissions are needed — no Accessibility, no Input Monitoring.</p>
     <table>
       <tbody><tr><th>Item</th><th>Detail</th></tr>
       <tr><td>OS</td><td>macOS 12 or later</td></tr>
       <tr><td>CPU</td><td>Apple Silicon (M1 or later) only. Does not run on Intel Macs</td></tr>
       <tr><td>Device</td><td>BRAIN MAGIC Luminella (USB)</td></tr>
       <tr><td>Software</td><td>Claude Code</td></tr>
-      <tr><td>Permissions</td><td>None</td></tr>
+      <tr><td>Permissions</td><td>None, except <strong>microphone access if you use push to talk</strong></td></tr>
     </tbody></table>
+
+    <h3 style="margin-top:32px">If you want push to talk</h3>
+    <p class="lede">This one feature needs external tools. They are not bundled with the app.</p>
+    <table>
+      <tbody><tr><th>For</th><th>Install</th></tr>
+      <tr><td>Recording</td><td><code>brew install ffmpeg</code></td></tr>
+      <tr><td>Transcription</td><td><code>pip install mlx-whisper</code></td></tr>
+    </tbody></table>
+    <p class="note" style="margin-top:20px">
+      The transcriber is 180MB and its speech model is over a gigabyte — out of proportion to a 22MB app, so it is called as an external command instead of being bundled.
+      <strong>The only time anything is downloaded</strong> is when that model is first fetched; nothing is sent after that.
+    </p>
     <p class="note" style="margin-top:20px">
       <strong>It cannot run alongside Luminella Core.</strong>
       Both compete for the same serial port, so only one of them works at a time.
       Quit Luminella Core while you are using the Luminella with Claude Code.
     </p>
     <p class="note">
-      It makes no network connections of any kind. See the <a href="privacy.en.html">privacy policy</a> for details.
+      Audio is processed entirely on this Mac and never sent anywhere, and the app itself makes no network connections. See the <a href="privacy.en.html">privacy policy</a> for details.
     </p>
   </div>
 </section>
@@ -183,6 +201,16 @@
     <details>
       <summary>How does it control the device?</summary>
       <p>The Luminella presents itself as a USB serial device. The app sets the LED colour and receives button presses over a 9600 baud serial link. That protocol is not published, so it was worked out by studying how the vendor software communicates with the device, then verified against real hardware. What is known is documented in the repository.</p>
+    </details>
+
+    <details>
+      <summary>What does push to talk need?</summary>
+      <p>Microphone permission, plus <code>ffmpeg</code> for recording and <code>mlx-whisper</code> for transcription — <code>brew install ffmpeg</code> and <code>pip install mlx-whisper</code>. Together the transcriber and its model exceed a gigabyte, which is why they are not bundled. None of it is needed if you do not use the feature.</p>
+    </details>
+
+    <details>
+      <summary>Is my speech sent anywhere?</summary>
+      <p>No. Transcription happens entirely on this Mac. The only network access is fetching the speech model the first time. The recording is deleted once it has been turned into text.</p>
     </details>
 
     <details>

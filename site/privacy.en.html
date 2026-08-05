@@ -16,7 +16,7 @@
 <div class="wrap doc">
   <a class="back" href="index.en.html">← Claude Luminella</a>
   <h1>Privacy Policy</h1>
-  <p class="updated">Last updated: 2026-08-05</p>
+  <p class="updated">Last updated: 2026-08-06</p>
 
   <p>Claude Luminella ("the app") shows Claude Code's state on the glow ring of a BRAIN MAGIC Luminella and lets you approve or deny operations with the device's buttons. This policy describes how the app handles information.</p>
 
@@ -28,7 +28,7 @@
     <li>Display advertising, or use data for advertising purposes</li>
     <li>Provide or sell data to third parties</li>
   </ul>
-  <p>The app makes no network connections. Every feature behaves identically without an internet connection.</p>
+  <p>The app itself makes no network connections. If you use push to talk, the external transcriber fetches its speech model <strong>once, the first time</strong>; after that it connects to nothing.</p>
 
   <h2>Information stored on your Mac</h2>
   <p>The app stores the following only on your own Mac. None of it is transmitted anywhere.</p>
@@ -57,12 +57,23 @@
     <li>This happens only when you explicitly choose the menu item.</li>
   </ul>
 
+  <h2>Audio (push to talk)</h2>
+  <p>Audio is recorded only while the stick is held over, and is turned into text <strong>entirely on this Mac</strong>.</p>
+  <ul>
+    <li>Neither the recording nor the resulting text is <strong>ever transmitted anywhere</strong>.</li>
+    <li>The recording is deleted as soon as it has been transcribed.</li>
+    <li>The text is placed on the clipboard and stored nowhere else.</li>
+    <li>Recording happens only while the stick is held. The microphone is never left open.</li>
+  </ul>
+  <p>This feature requires macOS microphone permission. <strong>If you do not use it, no permission is needed at all.</strong></p>
+  <p>Transcription uses external tools (<code>ffmpeg</code> and <code>mlx-whisper</code>) that you install yourself; they are not bundled with the app. Those tools reach the network only to fetch the speech model the first time.</p>
+
   <h2>Handling of input</h2>
   <p>The app <strong>does not request</strong> macOS Accessibility or Input Monitoring permission. Without those permissions it is technically incapable of reading your keyboard or mouse input.</p>
-  <p>The only input it reads is what the Luminella itself sends over the USB serial connection: which button was pressed and where the stick is. That is used only to decide approvals, and is neither stored nor transmitted.</p>
+  <p>The only input it reads is what the Luminella itself sends over the USB serial connection — which button was pressed and where the stick is — plus the microphone while push to talk is held. These are used only to decide approvals and to transcribe speech.</p>
 
   <h2>Permissions</h2>
-  <p>The app requires no special macOS permissions. It communicates with a USB serial device and nothing else.</p>
+  <p>The status light and the approve/deny buttons require no special macOS permissions; the app communicates with a USB serial device and nothing else. Microphone permission is needed only for push to talk.</p>
 
   <h2>Cost and external sites</h2>
   <p>The app is distributed free of charge and contains no in-app payments. The developer receives no payment information.</p>
