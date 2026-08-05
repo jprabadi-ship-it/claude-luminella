@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Luminella — Turn your Luminella into a status light for Claude Code</title>
+<meta name="description" content="Show Claude Code's state on the BRAIN MAGIC Luminella glow ring. When a permission prompt appears the ring blinks amber, and a physical button approves or denies it. A macOS menu bar app.">
+<link rel="canonical" href="https://claude-luminella.gigowat.com/index.en.html">
+<link rel="alternate" hreflang="ja" href="https://claude-luminella.gigowat.com/index.ja.html">
+<link rel="alternate" hreflang="en" href="https://claude-luminella.gigowat.com/index.en.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Claude Luminella">
+<meta property="og:title" content="Claude Luminella — Turn your Luminella into a status light for Claude Code">
+<meta property="og:description" content="Show Claude Code's state on the BRAIN MAGIC Luminella glow ring. When a permission prompt appears the ring blinks amber, and a physical button approves or denies it.">
+<meta property="og:url" content="https://claude-luminella.gigowat.com/index.en.html">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+
+<header>
+  <div class="wrap">
+    <h1>Claude Luminella</h1>
+    <p class="tagline">Turn your Luminella into a status light and an approval button for Claude Code.<br>See what it is doing without looking at the screen.</p>
+    <div class="cta">
+      <a class="button" href="#download">Download free</a>
+      <a class="button secondary" href="#features">What it does</a>
+    </div>
+    <p class="note" style="margin-top:20px">macOS 12 or later / Apple Silicon only / requires a BRAIN MAGIC Luminella</p>
+  </div>
+</header>
+
+<section id="features">
+  <div class="wrap">
+    <h2>What it does</h2>
+    <p class="lede">Claude Code barely moves on screen while it is thinking. This puts that state on the ring under your hand.</p>
+    <div class="grid">
+      <div class="card">
+        <h3>State as colour</h3>
+        <p>Idle, working, waiting for approval, error, done — each has its own colour on the glow ring. You can track progress without watching the terminal.</p>
+      </div>
+      <div class="card">
+        <h3>Blinking means it stopped</h3>
+        <p>Movement carries meaning too. Steady means a settled state, a slow breath means work in progress, a fast blink means it is waiting on you. Readable from the corner of your eye.</p>
+      </div>
+      <div class="card">
+        <h3>Approve or deny with a button</h3>
+        <p>When a permission prompt appears the ring blinks amber. One button approves, another denies. Your hand never has to go back to the keyboard.</p>
+      </div>
+      <div class="card">
+        <h3>No vendor software needed</h3>
+        <p>It talks to the device directly rather than through Luminella Core. No profiles, no key assignments — install it and the ring lights up.</p>
+      </div>
+      <div class="card">
+        <h3>Assign buttons by pressing them</h3>
+        <p>You never need to know which switch is number what. Pick "assign" from the menu and press the button you want while the ring is lit.</p>
+      </div>
+      <div class="card">
+        <h3>One-click hook setup</h3>
+        <p>The app writes the Claude Code hook configuration for you. It only appends, never touches your existing hooks, and backs the file up first. Removing it is one click as well.</p>
+      </div>
+      <div class="card">
+        <h3>Built so it cannot block you</h3>
+        <p>Quit the app or unplug the device and Claude Code carries on as usual. If nothing answers, the on-screen prompt decides — the physical button is never a gate you can get stuck behind.</p>
+      </div>
+      <div class="card">
+        <h3>Survives unplugging</h3>
+        <p>Pull the cable and it notices; plug it back in and it reconnects on its own. No need to restart the app.</p>
+      </div>
+      <div class="card">
+        <h3>Menu bar only</h3>
+        <p>No Dock icon. The menu bar icon itself shows the current state. Claude Code launches the app when a session starts, so you do not have to keep it running.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="states">
+  <div class="wrap">
+    <h2>Colours and states</h2>
+    <p class="lede">Colours are configurable. There are three ways the ring lights: steady, breathing, and blinking.</p>
+    <table>
+      <tbody><tr><th>Colour</th><th>Motion</th><th>State</th><th>What to do</th></tr>
+      <tr><td><strong>Dim blue</strong></td><td>Steady</td><td>Idle, waiting for input</td><td>Give it a task</td></tr>
+      <tr><td><strong>Cyan</strong></td><td>Breathing</td><td>Thinking or running a tool</td><td>Wait</td></tr>
+      <tr><td><strong>Amber</strong></td><td>Blinking</td><td>Waiting for approval. Stopped</td><td>Press approve or deny</td></tr>
+      <tr><td><strong>Purple</strong></td><td>Blinking</td><td>Notification</td><td>Look at the screen</td></tr>
+      <tr><td><strong>Red</strong></td><td>Steady</td><td>Denied, or an error</td><td>Depends</td></tr>
+      <tr><td><strong>Green</strong></td><td>Steady</td><td>Approved, or response finished</td><td>—</td></tr>
+    </tbody></table>
+    <p class="note" style="margin-top:20px">If nothing is pressed within 30 seconds, the ring returns to the working colour and the normal on-screen prompt takes over. The timeout is configurable.</p>
+  </div>
+</section>
+
+<section id="requirements">
+  <div class="wrap">
+    <h2>Requirements</h2>
+    <p class="lede">No special macOS permissions. It uses USB serial communication only — no Accessibility, no Input Monitoring.</p>
+    <table>
+      <tbody><tr><th>Item</th><th>Detail</th></tr>
+      <tr><td>OS</td><td>macOS 12 or later</td></tr>
+      <tr><td>CPU</td><td>Apple Silicon (M1 or later) only. Does not run on Intel Macs</td></tr>
+      <tr><td>Device</td><td>BRAIN MAGIC Luminella (USB)</td></tr>
+      <tr><td>Software</td><td>Claude Code</td></tr>
+      <tr><td>Permissions</td><td>None</td></tr>
+    </tbody></table>
+    <p class="note" style="margin-top:20px">
+      <strong>It cannot run alongside Luminella Core.</strong>
+      Both compete for the same serial port, so only one of them works at a time.
+      Quit Luminella Core while you are using the Luminella with Claude Code.
+    </p>
+    <p class="note">
+      It makes no network connections of any kind. See the <a href="privacy.en.html">privacy policy</a> for details.
+    </p>
+  </div>
+</section>
+
+<section id="download">
+  <div class="wrap">
+    <h2>Download</h2>
+    <p class="lede">Free, with no feature limits and no ads. The source is published under GPLv3.</p>
+    <p class="price">Free</p>
+    <div class="cta" style="margin-top:20px">
+      <a class="button" href="https://github.com/jprabadi-ship-it/claude-luminella/releases/latest">Download the latest version</a>
+      <a class="button secondary" href="https://github.com/jprabadi-ship-it/claude-luminella">Source code (GitHub)</a>
+    </div>
+    <p class="note" style="margin-top:20px">
+      The app is not notarized by Apple, so the first launch needs one manual step.
+      macOS will warn you when you open it: go to <strong>System Settings → Privacy &amp; Security</strong>
+      and click "Open Anyway". After that it starts normally.
+    </p>
+    <p class="note">
+      Once installed, choose <strong>"Install hooks"</strong> from the menu bar icon to connect it to Claude Code.
+    </p>
+  </div>
+</section>
+
+<section id="support">
+  <div class="wrap">
+    <h2>Support development</h2>
+    <p class="lede">Only if you like it. It is entirely optional, and nothing about the app changes either way.</p>
+    <div class="cta">
+      <a class="button secondary" href="https://www.amazon.co.jp/hz/wishlist/ls/WFRWJC8J65NF">Amazon wish list</a>
+    </div>
+    <p class="note" style="margin-top:20px">
+      Report bugs or request features on <a href="https://github.com/jprabadi-ship-it/claude-luminella/issues">GitHub Issues</a>,
+      or email <a href="mailto:admin@gigowat.com">admin@gigowat.com</a>.
+    </p>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <h2>Questions</h2>
+
+    <details>
+      <summary>Can I use it together with Luminella Core?</summary>
+      <p>No. Both hold the device's serial port, so they cannot run at the same time. While Luminella Core is running this app will report "Device: not connected". Quit Luminella Core, then choose "Reconnect device" from the menu.</p>
+    </details>
+
+    <details>
+      <summary>Does it work with the Orbital2 or Orbital2 STERNA?</summary>
+      <p>Unverified. The protocol appears to be shared across the family, but the Luminella is the only device this has been tested on. The Orbital2 has hardware the Luminella lacks — a vibration motor and a rotary encoder — and none of that has been exercised. If you try it, I would be glad to hear how it went.</p>
+    </details>
+
+    <details>
+      <summary>Does Claude Code break if I quit the app?</summary>
+      <p>No, it keeps working normally. If the hook cannot reach the app it exits without returning a decision, and approval falls back to the usual on-screen prompt. The same applies if you unplug the device or let the approval time out. You can never end up unable to proceed because a button was not pressed.</p>
+    </details>
+
+    <details>
+      <summary>Will it break my existing hook configuration?</summary>
+      <p>It leaves it alone. The app only appends to the settings file and preserves other tools' hooks. It writes a timestamped backup before making any change, so you can always go back. "Remove hooks" deletes only the entries it added.</p>
+    </details>
+
+    <details>
+      <summary>Can I use it alongside a remote approval tool?</summary>
+      <p>Registering more than one approver for the same event is possible and they coexist in the configuration. What has not been verified is which one wins when both try to answer at once. If you need predictable behaviour, enable only one of them.</p>
+    </details>
+
+    <details>
+      <summary>How does it control the device?</summary>
+      <p>The Luminella presents itself as a USB serial device. The app sets the LED colour and receives button presses over a 9600 baud serial link. That protocol is not published, so it was worked out by studying how the vendor software communicates with the device, then verified against real hardware. What is known is documented in the repository.</p>
+    </details>
+
+    <details>
+      <summary>Does it record my keystrokes?</summary>
+      <p>No. It requests neither Accessibility nor Input Monitoring permission, and without those it cannot read your keyboard at all. The only input it reads is the Luminella's own buttons and stick. It makes no network connections either.</p>
+    </details>
+
+    <details>
+      <summary>Is it really free?</summary>
+      <p>Yes. No feature limits, no trial period, no ads. The source is published under GPLv3, so you can build it yourself, modify it, and redistribute it (modified versions must also be released under GPLv3).</p>
+    </details>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>
+      <a href="privacy.en.html">Privacy policy</a> ·
+      <a href="mailto:admin@gigowat.com">Support (admin@gigowat.com)</a> ·
+      <a href="index.ja.html">日本語</a>
+    </p>
+    <p>
+      Claude Luminella is an independent product, not affiliated with BRAIN MAGIC Inc. or Anthropic.
+      Luminella and Orbital2 are trademarks of BRAIN MAGIC Inc.;
+      Claude and Claude Code are trademarks of Anthropic PBC.
+      Both are used only to identify the products this app works with.
+    </p>
+  </div>
+</footer>
+
+
+</body>
+</html>
