@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — Claude Luminella</title>
+<meta name="description" content="Claude Luminella collects no personal information and makes no network connections. This describes what is stored on your Mac and how the Claude Code settings file is handled.">
+<link rel="canonical" href="https://claude-luminella.gigowat.com/privacy.en.html">
+<link rel="alternate" hreflang="ja" href="https://claude-luminella.gigowat.com/privacy.ja.html">
+<link rel="alternate" hreflang="en" href="https://claude-luminella.gigowat.com/privacy.en.html">
+<meta name="robots" content="index, follow">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="wrap doc">
+  <a class="back" href="index.en.html">← Claude Luminella</a>
+  <h1>Privacy Policy</h1>
+  <p class="updated">Last updated: 2026-08-05</p>
+
+  <p>Claude Luminella ("the app") shows Claude Code's state on the glow ring of a BRAIN MAGIC Luminella and lets you approve or deny operations with the device's buttons. This policy describes how the app handles information.</p>
+
+  <h2>Information collected</h2>
+  <p><strong>The app collects and transmits no personal information whatsoever.</strong> Specifically, it does none of the following:</p>
+  <ul>
+    <li>Collect identifying information (name, email address, account details)</li>
+    <li>Analyse usage (analytics, telemetry, automatic crash reporting)</li>
+    <li>Display advertising, or use data for advertising purposes</li>
+    <li>Provide or sell data to third parties</li>
+  </ul>
+  <p>The app makes no network connections. Every feature behaves identically without an internet connection.</p>
+
+  <h2>Information stored on your Mac</h2>
+  <p>The app stores the following only on your own Mac. None of it is transmitted anywhere.</p>
+  <table>
+    <tr><th>Content</th><th>Location</th></tr>
+    <tr>
+      <td>Which buttons approve and deny, ring colours, timeout, and other settings</td>
+      <td><code>~/.claude/luminella/config.json</code></td>
+    </tr>
+    <tr>
+      <td>Connection diagnostics (connection results, communication errors)</td>
+      <td><code>~/.claude/luminella/daemon.log</code></td>
+    </tr>
+  </table>
+  <p>The diagnostic log exists to help work out why a device is not being recognised. You may delete the file at any time. Support may ask you to send it, but doing so is entirely your choice.</p>
+
+  <h2>What Claude Code passes to the app</h2>
+  <p>The app integrates through Claude Code's "hooks" mechanism. What Claude Code passes to it is only <strong>which kind of event occurred</strong> (session started, a tool ran, approval requested) and <strong>the name of the tool involved</strong>.</p>
+  <p>The app uses these solely to change what the ring shows and to decide when to wait for a button. It <strong>neither stores nor transmits them</strong>. It does not read conversation content, the contents of commands being run, or the contents of files.</p>
+
+  <h2>Changes to the Claude Code settings file</h2>
+  <p>Only when you choose "Install hooks" or "Remove hooks" from the menu does the app modify <code>~/.claude/settings.json</code>.</p>
+  <ul>
+    <li>Changes are <strong>additions only, plus removal of the entries the app itself added</strong>. Other tools' settings are left untouched.</li>
+    <li>A timestamped backup is written alongside the file before any change.</li>
+    <li>This happens only when you explicitly choose the menu item.</li>
+  </ul>
+
+  <h2>Handling of input</h2>
+  <p>The app <strong>does not request</strong> macOS Accessibility or Input Monitoring permission. Without those permissions it is technically incapable of reading your keyboard or mouse input.</p>
+  <p>The only input it reads is what the Luminella itself sends over the USB serial connection: which button was pressed and where the stick is. That is used only to decide approvals, and is neither stored nor transmitted.</p>
+
+  <h2>Permissions</h2>
+  <p>The app requires no special macOS permissions. It communicates with a USB serial device and nothing else.</p>
+
+  <h2>Cost and external sites</h2>
+  <p>The app is distributed free of charge and contains no in-app payments. The developer receives no payment information.</p>
+  <p>The product page links to GitHub and to an Amazon wish list. If you follow those links, information there is handled under each service's own privacy policy. <strong>The app itself sends nothing to those services.</strong></p>
+
+  <h2>Changes to this policy</h2>
+  <p>If this policy changes, the last-updated date on this page will be revised and the change described.</p>
+
+  <h2>Contact</h2>
+  <p>For questions about this policy or the app, contact <a href="mailto:admin@gigowat.com">admin@gigowat.com</a>.</p>
+
+  <hr>
+  <p class="note">
+    Claude Luminella is an independent product, not affiliated with BRAIN MAGIC Inc. or Anthropic.
+    Luminella and Orbital2 are trademarks of BRAIN MAGIC Inc., and Claude and Claude Code are trademarks of Anthropic PBC;
+    these names are used only to identify the products this app is compatible with.
+  </p>
+  <p class="note"><a href="privacy.ja.html">日本語</a></p>
+</div>
+
+</body>
+</html>

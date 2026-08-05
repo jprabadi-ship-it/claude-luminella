@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Luminella — Luminella を Claude Code のステータスランプにする</title>
+<meta name="description" content="BRAIN MAGIC Luminella のグロウリングで Claude Code の状態を表示。許可プロンプトが出たら橙に点滅し、物理ボタンで許可・拒否できます。macOS メニューバー常駐アプリ。">
+<link rel="canonical" href="https://claude-luminella.gigowat.com/index.ja.html">
+<link rel="alternate" hreflang="ja" href="https://claude-luminella.gigowat.com/index.ja.html">
+<link rel="alternate" hreflang="en" href="https://claude-luminella.gigowat.com/index.en.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Claude Luminella">
+<meta property="og:title" content="Claude Luminella — Luminella を Claude Code のステータスランプにする">
+<meta property="og:description" content="BRAIN MAGIC Luminella のグロウリングで Claude Code の状態を表示。許可プロンプトが出たら橙に点滅し、物理ボタンで許可・拒否できます。">
+<meta property="og:url" content="https://claude-luminella.gigowat.com/index.ja.html">
+<meta property="og:locale" content="ja_JP">
+<meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+
+<header>
+  <div class="wrap">
+    <h1>Claude Luminella</h1>
+    <p class="tagline">Luminella を Claude Code のステータスランプと承認ボタンにする。<br>いま何をしているか、画面を見なくても分かる。</p>
+    <div class="cta">
+      <a class="button" href="#download">無料でダウンロード</a>
+      <a class="button secondary" href="#features">できること</a>
+    </div>
+    <p class="note" style="margin-top:20px">macOS 12 以降 / Apple Silicon 専用 / BRAIN MAGIC Luminella が必要</p>
+  </div>
+</header>
+
+<section id="features">
+  <div class="wrap">
+    <h2>できること</h2>
+    <p class="lede">Claude Code は考えている間、画面上ではほとんど動きません。その状態を手元のリングに出します。</p>
+    <div class="grid">
+      <div class="card">
+        <h3>状態が色で分かる</h3>
+        <p>待機・実行中・許可待ち・エラー・完了を、グロウリングの色と光り方で表示します。ターミナルを見ていなくても進み具合が分かります。</p>
+      </div>
+      <div class="card">
+        <h3>点滅していたら止まっている</h3>
+        <p>色だけでなく動きでも区別します。点灯は安定した状態、ゆっくりした呼吸は動作中、速い点滅はあなたの操作待ち。視界の端でも判別できます。</p>
+      </div>
+      <div class="card">
+        <h3>物理ボタンで許可・拒否</h3>
+        <p>許可プロンプトが出るとリングが橙に点滅します。ボタンを1つ押せば許可、別のボタンで拒否。キーボードに手を戻す必要がありません。</p>
+      </div>
+      <div class="card">
+        <h3>専用ソフトが要りません</h3>
+        <p>Luminella Core を介さず、デバイスと直接通信します。プロファイルの設定もキー割り当ても不要で、インストールしたら光ります。</p>
+      </div>
+      <div class="card">
+        <h3>ボタンは押して割り当て</h3>
+        <p>番号を調べる必要はありません。メニューから割り当てを選び、リングが光っている間に使いたいボタンを押すだけです。</p>
+      </div>
+      <div class="card">
+        <h3>フックはワンクリックで導入</h3>
+        <p>Claude Code の設定ファイルへの追記をアプリが行います。既存のフックには触れず追記のみ、実行前に自動でバックアップを取ります。解除も同じくワンクリックです。</p>
+      </div>
+      <div class="card">
+        <h3>止まらないように作ってあります</h3>
+        <p>アプリを終了しても、デバイスを抜いても、Claude Code は普段どおり動きます。応答がなければ画面のプロンプトに委ねるだけで、物理ボタンが必須の関門にはなりません。</p>
+      </div>
+      <div class="card">
+        <h3>抜き差しに追従します</h3>
+        <p>ケーブルを抜くと接続が切れたことを検知し、挿し直すと自動で復帰します。アプリを起動し直す必要はありません。</p>
+      </div>
+      <div class="card">
+        <h3>メニューバーだけ</h3>
+        <p>Dock には出ません。メニューバーのアイコン自体が現在の状態を示します。Claude Code の起動時にアプリが立ち上がるので、常駐させておく必要もありません。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="states">
+  <div class="wrap">
+    <h2>状態と色</h2>
+    <p class="lede">色は用途に合わせて変更できます。光り方は3種類、点灯・呼吸・点滅です。</p>
+    <table>
+      <tbody><tr><th>色</th><th>光り方</th><th>状態</th><th>あなたがすること</th></tr>
+      <tr><td><strong>暗い青</strong></td><td>点灯</td><td>待機中。入力待ち</td><td>指示を出す</td></tr>
+      <tr><td><strong>シアン</strong></td><td>呼吸</td><td>思考中・ツール実行中</td><td>待つ</td></tr>
+      <tr><td><strong>橙</strong></td><td>点滅</td><td>許可待ち。止まっています</td><td>許可または拒否ボタンを押す</td></tr>
+      <tr><td><strong>紫</strong></td><td>点滅</td><td>通知</td><td>画面を見る</td></tr>
+      <tr><td><strong>赤</strong></td><td>点灯</td><td>拒否した／エラー</td><td>状況によります</td></tr>
+      <tr><td><strong>緑</strong></td><td>点灯</td><td>許可した／応答完了</td><td>—</td></tr>
+    </tbody></table>
+    <p class="note" style="margin-top:20px">許可待ちで30秒操作がなければ、リングは実行中に戻り、通常どおり画面のプロンプトで操作できます。待ち時間も変更できます。</p>
+  </div>
+</section>
+
+<section id="requirements">
+  <div class="wrap">
+    <h2>必要な環境</h2>
+    <p class="lede">macOS の特別な許可は必要ありません。USB シリアル通信のみで、アクセシビリティも入力監視も使いません。</p>
+    <table>
+      <tbody><tr><th>項目</th><th>内容</th></tr>
+      <tr><td>OS</td><td>macOS 12 以降</td></tr>
+      <tr><td>CPU</td><td>Apple Silicon（M1 以降）専用。Intel Mac では動作しません</td></tr>
+      <tr><td>デバイス</td><td>BRAIN MAGIC Luminella（USB 接続）</td></tr>
+      <tr><td>ソフト</td><td>Claude Code</td></tr>
+      <tr><td>権限</td><td>不要</td></tr>
+    </tbody></table>
+    <p class="note" style="margin-top:20px">
+      <strong>Luminella Core との同時使用はできません。</strong>
+      同じシリアルポートを取り合うため、どちらか一方だけが動作します。
+      Luminella を Claude Code 用として使う間は Luminella Core を終了してください。
+    </p>
+    <p class="note">
+      ネットワーク通信は一切行いません。詳しくは<a href="privacy.ja.html">プライバシーポリシー</a>をご覧ください。
+    </p>
+  </div>
+</section>
+
+<section id="download">
+  <div class="wrap">
+    <h2>ダウンロード</h2>
+    <p class="lede">無料で、機能制限も広告もありません。ソースコードは GPLv3 で公開しています。</p>
+    <p class="price">無料</p>
+    <div class="cta" style="margin-top:20px">
+      <a class="button" href="https://github.com/jprabadi-ship-it/claude-luminella/releases/latest">最新版をダウンロード</a>
+      <a class="button secondary" href="https://github.com/jprabadi-ship-it/claude-luminella">ソースコード（GitHub）</a>
+    </div>
+    <p class="note" style="margin-top:20px">
+      Apple の公証（notarization）を受けていないため、初回のみ手動で開く必要があります。
+      アプリを開こうとすると警告が出るので、<strong>システム設定 → プライバシーとセキュリティ</strong>を開き、
+      「このまま開く」を押してください。2回目以降は普通に起動します。
+    </p>
+    <p class="note">
+      インストール後、メニューバーのアイコンから<strong>「フックを導入」</strong>を選ぶと Claude Code に接続されます。
+    </p>
+  </div>
+</section>
+
+<section id="support">
+  <div class="wrap">
+    <h2>開発を応援する</h2>
+    <p class="lede">気に入っていただけたら。もちろん任意で、支援がなくても機能に違いはありません。</p>
+    <div class="cta">
+      <a class="button secondary" href="https://www.amazon.co.jp/hz/wishlist/ls/WFRWJC8J65NF">Amazon ほしい物リスト</a>
+    </div>
+    <p class="note" style="margin-top:20px">
+      不具合の報告や要望は <a href="https://github.com/jprabadi-ship-it/claude-luminella/issues">GitHub の Issues</a>、
+      あるいは <a href="mailto:admin@gigowat.com">admin@gigowat.com</a> までどうぞ。
+    </p>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <h2>よくある質問</h2>
+
+    <details>
+      <summary>Luminella Core と併用できますか？</summary>
+      <p>できません。どちらもデバイスのシリアルポートを占有するため、同時には動作しません。Luminella Core が起動している間、このアプリは「デバイス: 未接続」と表示します。Luminella Core を終了してから、メニューの「デバイスに再接続」を選んでください。</p>
+    </details>
+
+    <details>
+      <summary>Orbital2 や Orbital2 STERNA でも動きますか？</summary>
+      <p>確認していません。通信方式は共通のようですが、動作を検証したのは Luminella のみです。Orbital2 には振動モーターやロータリーエンコーダーなど Luminella にない機構があり、そのあたりの挙動も未検証です。試された結果を教えていただけると助かります。</p>
+    </details>
+
+    <details>
+      <summary>アプリを終了したら Claude Code は動かなくなりますか？</summary>
+      <p>いいえ、普段どおり動きます。フックはアプリに接続できなければ何も返さずに終了し、許可の判断は通常どおり画面のプロンプトで行われます。デバイスを抜いた場合や、許可待ちで時間切れになった場合も同じです。物理ボタンを押さないと先に進めない、という状態にはなりません。</p>
+    </details>
+
+    <details>
+      <summary>既存のフック設定は壊れませんか？</summary>
+      <p>触りません。設定ファイルには追記のみを行い、他のツールのフックはそのまま残します。書き換える前にタイムスタンプ付きのバックアップを作るので、いつでも戻せます。メニューの「フックを解除」を選ぶと、追記した項目だけを削除します。</p>
+    </details>
+
+    <details>
+      <summary>遠隔承認ツールと併用できますか？</summary>
+      <p>同じイベントに複数の承認ツールを登録すること自体は可能で、設定上は共存します。ただし両方が同時に判断を返そうとした場合の優先順位までは検証できていません。確実に動かしたい場合は、どちらか一方だけを有効にすることをおすすめします。</p>
+    </details>
+
+    <details>
+      <summary>どうやってデバイスを制御しているのですか？</summary>
+      <p>Luminella は USB シリアルデバイスとして接続されており、9600 baud のシリアル通信で LED の色を指定し、ボタンの押下を受け取っています。この通信仕様は公開されていないため、設定ソフトの配布ファイルに残っていたソースマップから復元し、実機で検証しました。詳細はリポジトリに記載しています。</p>
+    </details>
+
+    <details>
+      <summary>キー入力を記録していませんか？</summary>
+      <p>していません。macOS のアクセシビリティ権限も入力監視権限も要求しませんし、要求しない以上キーボードの入力を読むことはできません。読み取るのは Luminella 本体のボタンとスティックだけです。ネットワーク通信も行いません。</p>
+    </details>
+
+    <details>
+      <summary>本当に無料ですか？</summary>
+      <p>はい。機能制限も、試用期限も、広告もありません。ソースコードは GPLv3 で公開しているので、自分でビルドして使うことも、改変して再配布することもできます（改変版も GPLv3 で公開する必要があります）。</p>
+    </details>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>
+      <a href="privacy.ja.html">プライバシーポリシー</a> ・
+      <a href="mailto:admin@gigowat.com">サポート（admin@gigowat.com）</a> ・
+      <a href="index.en.html">English</a>
+    </p>
+    <p>
+      Claude Luminella は株式会社ブレインマジックおよび Anthropic とは関係のない独立した製品です。
+      Luminella、Orbital2 は株式会社ブレインマジックの商標であり、
+      Claude、Claude Code は Anthropic PBC の商標です。
+      いずれも対応する製品を示す目的でのみ使用しています。
+    </p>
+  </div>
+</footer>
+
+
+</body>
+</html>
