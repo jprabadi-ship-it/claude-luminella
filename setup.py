@@ -26,6 +26,10 @@ OPTIONS = {
         "CFBundleVersion": "1.0.0",
         "CFBundleShortVersionString": "1.0.0",
         "LSUIElement": True,  # menu bar only: no Dock icon, no menu bar app menu
+        # Push-to-talk records from the microphone; macOS requires this string
+        # before it will even prompt, and denies silently without it.
+        "NSMicrophoneUsageDescription":
+            "押して話す機能で、ボタンを押している間だけ音声を録音し、この Mac 上で文字に変換します。",
         "LSMinimumSystemVersion": "12.0",
         "NSHumanReadableCopyright": "Luminella glow ring bridge for Claude Code",
     },

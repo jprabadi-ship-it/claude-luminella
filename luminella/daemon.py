@@ -50,6 +50,9 @@ class Daemon:
         self.listeners_lock = threading.Lock()
         self.running = True
         self.last_rgb = None
+        self.ptt = None
+        self.stick_engaged = False
+        self.last_stick = None
 
     # ---- serial ---------------------------------------------------------
 
@@ -93,21 +96,60 @@ class Daemon:
             buf += chunk
             frames, buf = protocol.parse(buf)
             for tag, payload in frames:
+                if tag == b"JS" and len(payload) == 4:
+                    # "X" <x> "Y" <y>, centre 0x80. The stick reports a level
+                    # rather than an edge, so a dropped frame self-corrects on
+                    # the next one -- unlike a switch, whose release can be
+                    # lost for good.
+                    self.on_stick(payload[1] - 128, payload[3] - 128)
+                    continue
                 if tag != b"SW":
-                    continue  # JS/RC stream constantly; only switches matter here
+                    continue
                 text = payload.decode("ascii", "replace")
                 if "=" not in text:
                     continue
                 number, _, value = text.partition("=")
-                if value != "1":
-                    continue  # act on press, ignore release
-                self.dispatch(number)
+                self.dispatch(number, value)
 
-    def dispatch(self, switch):
+    def on_stick(self, x, y):
+        """Drive push-to-talk from stick deflection, with hysteresis."""
+        if not self.ptt or self.cfg.get("ptt_mode") != "stick":
+            return
+        magnitude = max(abs(x), abs(y))
+        if magnitude != self.last_stick:
+            self.last_stick = magnitude
+            log("stick %d (x=%d y=%d)" % (magnitude, x, y))
+        on_at = int(self.cfg.get("ptt_stick_on", 45))
+        off_at = int(self.cfg.get("ptt_stick_off", 20))
+        if not self.stick_engaged and magnitude >= on_at:
+            self.stick_engaged = True
+            self.ptt.start()
+        elif self.stick_engaged and magnitude <= off_at:
+            self.stick_engaged = False
+            self.ptt.stop()
+
+    def dispatch(self, switch, value):
         with self.listeners_lock:
             for box, event in self.listeners:
-                box.append(switch)
+                box.append((switch, value))
                 event.set()
+
+        # Push-to-talk is driven by the device, not by a hook, so it is
+        # handled here rather than over the socket.
+        ptt_switch = str(self.cfg.get("ptt_switch") or "")
+        log("sw %s=%s (ptt=%r)" % (switch, value, ptt_switch))
+        if self.ptt and ptt_switch and str(switch) == ptt_switch:
+            if value == "1":
+                # The device sometimes drops the release edge, so a press while
+                # already recording ends it rather than being ignored: hold to
+                # talk normally, press again to stop if the release went astray.
+                if self.ptt.is_recording():
+                    log("ptt: second press ends recording (release was lost)")
+                    self.ptt.stop()
+                else:
+                    self.ptt.start()
+            else:
+                self.ptt.stop()
 
     # ---- animation ------------------------------------------------------
 
@@ -159,9 +201,41 @@ class Daemon:
             while time.time() < deadline:
                 if event.wait(min(0.25, max(0.01, deadline - time.time()))):
                     event.clear()
-                    if box:
-                        return box.pop(0)
+                    while box:
+                        switch, value = box.pop(0)
+                        if value == "1":
+                            return switch
             return None
+        finally:
+            with self.listeners_lock:
+                self.listeners = [(b, e) for b, e in self.listeners if b is not box]
+
+    def read_hold(self, timeout):
+        """Wait for a press, then confirm the switch also reports its release.
+
+        Returns (switch, has_release). Push-to-talk needs the release edge to
+        know when to stop; at least one switch on the device only ever sends
+        the press.
+        """
+        box, event = [], threading.Event()
+        with self.listeners_lock:
+            self.listeners.append((box, event))
+        try:
+            deadline = time.time() + timeout
+            pressed = None
+            while time.time() < deadline:
+                if not event.wait(min(0.25, max(0.01, deadline - time.time()))):
+                    continue
+                event.clear()
+                while box:
+                    switch, value = box.pop(0)
+                    if pressed is None and value == "1":
+                        pressed = switch
+                        # Give the release a moment to arrive.
+                        deadline = min(deadline, time.time() + 3.0)
+                    elif pressed is not None and switch == pressed and value == "0":
+                        return pressed, True
+            return pressed, False
         finally:
             with self.listeners_lock:
                 self.listeners = [(b, e) for b, e in self.listeners if b is not box]
@@ -183,7 +257,9 @@ class Daemon:
                     continue
                 event.clear()
                 while box:
-                    switch = box.pop(0)
+                    switch, value = box.pop(0)
+                    if value != "1":
+                        continue
                     if switch == approve:
                         decision = "allow"
                         break
@@ -228,6 +304,9 @@ class Daemon:
             elif cmd == "ask":
                 timeout = float(req.get("timeout", self.cfg["ask_timeout"]))
                 reply = {"decision": self.ask(timeout)}
+            elif cmd == "readhold":
+                switch, has_release = self.read_hold(float(req.get("timeout", 20)))
+                reply = {"switch": switch, "has_release": has_release}
             elif cmd == "readsw":
                 timeout = float(req.get("timeout", 15))
                 reply = {"switch": self.read_switch(timeout)}

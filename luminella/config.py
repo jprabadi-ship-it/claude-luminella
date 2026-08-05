@@ -23,6 +23,9 @@ DEFAULTS = {
         "done":    {"color": [0, 200, 60],   "mode": "solid"},
         "notify":  {"color": [180, 0, 255],  "mode": "blink"},
         "off":     {"color": [0, 0, 0],      "mode": "solid"},
+        # push-to-talk
+        "rec":     {"color": [255, 0, 90],   "mode": "breathe"},
+        "stt":     {"color": [120, 90, 255], "mode": "blink"},
     },
     # Which switch approves / rejects a gated tool call.
     "approve_switch": "1",
@@ -35,6 +38,30 @@ DEFAULTS = {
     # After "done", return to idle this many seconds later.
     "done_hold": 2.0,
     "fps": 15,
+
+    # ---- push-to-talk ----
+    # Hold this switch to record; release to transcribe to the clipboard.
+    # null disables the feature entirely.
+    "ptt_switch": None,
+    # "stick" holds while the stick is deflected, "switch" while a button is
+    # held. The stick reports position continuously, so a lost frame corrects
+    # itself; a switch's release edge, once dropped, is gone.
+    "ptt_mode": "stick",
+    "ptt_stick_on": 45,
+    "ptt_stick_off": 20,
+    # AVFoundation audio input index (see the menu for the device list).
+    "mic_index": 0,
+    "stt_language": "ja",
+    # Trimming silence keeps whisper from inventing text to fill it, but the
+    # filter can cut speech too; off until it is tuned.
+    "trim_silence": False,
+    # Absolute path to the transcriber. Required when running from an app
+    # bundle, where the project's .venv cannot be discovered.
+    "stt_path": None,
+    # mlx-whisper model (GPU, ~1s for 5s of speech on Apple Silicon).
+    "stt_model": "mlx-community/whisper-large-v3-turbo",
+    # Fallback when only the reference whisper CLI is installed.
+    "stt_model_cli": "base",
 }
 
 

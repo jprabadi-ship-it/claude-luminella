@@ -68,6 +68,7 @@ luminella/protocol.py   フレーム符号化・パース・ハンドシェイ�
 luminella/config.py     既定値と ~/.claude/luminella/config.json の読み込み
 luminella/daemon.py     シリアル保持 + unix socket サーバ + LED描画
 luminella/hookinstall.py settings.json への追記・除去
+luminella/ptt.py        プッシュトゥトーク（録音・文字起こし・クリップボード）
 luminella/client.py     デーモンへの薄いクライアント（CLI/検証用）
 hooks/luminella_hook.py Claude Code フックの入口。標準ライブラリのみ
 setup.py                py2app 設定
@@ -120,8 +121,79 @@ Team ID が食い違い、dyld が
 | 通知 | `notify` | 紫 | 点滅 |
 | エラー / 拒否 | `error` | 赤 | 点灯 |
 | 完了 / 許可 | `done` | 緑 | 点灯 |
+| 録音中 | `rec` | ピンク | 呼吸 |
+| 文字起こし中 | `stt` | 青紫 | 点滅 |
 
 色・モードは `~/.claude/luminella/config.json` の `states` で上書きできる。
+
+## プッシュトゥトーク
+
+スティックを倒している間だけ録音し、戻すと文字起こししてクリップボードに入れる。
+
+```
+倒す        → 録音開始（ピンク）
+倒したまま   → 喋る
+戻す        → 録音終了 → 文字起こし（青紫）→ クリップボード（緑）
+```
+
+### 必要なもの（この機能を使う場合のみ）
+
+**別途インストールが必要。** アプリには同梱していない。
+
+```sh
+brew install ffmpeg            # 録音に必須
+pip install mlx-whisper        # 文字起こし（Apple Silicon、推奨）
+```
+
+`mlx-whisper` は単体で約 180MB、モデルは 1GB を超える。22MB のアプリに同梱すると
+釣り合わないため、外部コマンドとして呼び出している。
+初回実行時にモデルを取得するので、そのときだけネットワーク接続が要る。
+
+代わりに `pip install openai-whisper` でも動くが、CPU 実行になり大幅に遅い。
+5 秒の音声での実測:
+
+| エンジン | 所要 |
+|---|---|
+| whisper CLI (small) | 20.4s |
+| whisper CLI (base) | 5.4s |
+| **mlx-whisper large-v3-turbo** | **0.97s** |
+
+**マイクの権限が要る。** 初回起動時に macOS が確認する
+（この機能を使わなければ、権限は一切必要ない）。
+
+### 設定
+
+アプリバンドルの中からは `__file__` がバンドル内を指すため、
+プロジェクトの `.venv` を発見できない。`stt_path` に絶対パスを書くこと。
+
+```json
+{
+  "ptt_mode": "stick",
+  "ptt_stick_on": 45,
+  "ptt_stick_off": 20,
+  "mic_index": 1,
+  "stt_path": "/path/to/.venv/bin/mlx_whisper",
+  "stt_model": "mlx-community/whisper-large-v3-turbo",
+  "stt_language": "ja"
+}
+```
+
+- `ptt_mode` — `stick`（推奨）か `switch`
+- `mic_index` — メニューの「マイクを選ぶ」で一覧を確認できる
+
+### なぜスイッチではなくスティックか
+
+`ptt_mode: "switch"` も残してあるが、既定はスティックにしている。
+
+**スイッチはエッジ、スティックはレベルだから。** スイッチは押下と解放の瞬間しか
+信号を送らないので、解放を 1 回取りこぼすと録音が止まらなくなる。実機では
+SW8 が解放をまったく送らず、他のスイッチでも取りこぼしが確認できた。
+
+スティックは位置 (`JS X<値> Y<値>`) を送り続けるため、フレームを落としても
+次のフレームで正しい状態に復帰する。ヒステリシス
+（`ptt_stick_on` / `ptt_stick_off`）で中心付近のふらつきを吸収している。
+
+`switch` モードには、録音中にもう一度押すと停止するフォールバックを入れてある。
 
 ## 承認フロー
 
@@ -156,6 +228,12 @@ Team ID が食い違い、dyld が
 
 ## 注意
 
+- **アプリバンドルは環境が違う。** py2app は `PYTHONHOME` を設定し、ロケールを
+  引き継がない。外部コマンドを呼ぶ箇所では環境を掃除し（`ptt.clean_env`）、
+  出力の復号は UTF-8 を明示すること。ソースで動いてもバンドルで動くとは限らない
+- **ad-hoc 署名だとマイクの許可を毎回聞かれる。** TCC は署名の同一性に権限を
+  紐づけるため、ビルドのたびに別アプリと見なされる。手元で使うなら
+  `SIGN_ID` を渡して署名すること
 - **Luminella Core / Orbital2 Core とは同時に使えない。** 同じシリアルポートを取り合う。
   デーモンが `handshake no reply` を吐く時はまずこれを疑う
 - `PermissionRequest` には `claude-remote-approver` も同居している。

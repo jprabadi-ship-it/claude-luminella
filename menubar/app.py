@@ -11,12 +11,14 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 
 import rumps
+from AppKit import NSApplication
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from luminella import config, daemon, hookinstall
+from luminella import config, daemon, hookinstall, ptt
 
 APP_NAME = "Luminella"
 
@@ -30,6 +32,8 @@ GLYPH = {
     "error": "🔴",
     "done": "🟢",
     "off": "⚫",
+    "rec": "🔴",
+    "stt": "🟣",
 }
 
 STATE_LABEL = {
@@ -40,7 +44,45 @@ STATE_LABEL = {
     "error": "エラー / 拒否",
     "done": "完了 / 許可",
     "off": "停止",
+    "rec": "録音中",
+    "stt": "文字起こし中",
 }
+
+
+def guard(fn):
+    """Log exceptions raised inside menu callbacks.
+
+    A traceback from a rumps callback goes to stderr, which is nowhere at all
+    inside an app bundle, so a broken menu item is indistinguishable from one
+    that simply does nothing.
+    """
+    def wrapper(self, sender=None):
+        daemon.log("menu: %s" % fn.__name__)
+        try:
+            return fn(self, sender)
+        except Exception:
+            daemon.log("menu: %s FAILED\n%s" % (fn.__name__, traceback.format_exc()))
+            raise
+    wrapper.__name__ = fn.__name__
+    return wrapper
+
+
+def front():
+    """Bring the app forward so dialogs are not buried behind other windows.
+
+    LSUIElement apps are not activated by a menu click, so an NSAlert or a
+    rumps.Window opens behind the frontmost application and looks like nothing
+    happened at all.
+    """
+    try:
+        NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+    except Exception:
+        pass
+
+
+def alert(*args, **kwargs):
+    front()
+    return rumps.alert(*args, **kwargs)
 
 
 def resource(name):
@@ -61,6 +103,14 @@ class LuminellaApp(rumps.App):
         self.item_state = rumps.MenuItem("状態: 起動中…")
         self.item_device = rumps.MenuItem("デバイス: 確認中…")
         self.item_hooks = rumps.MenuItem("Claude Code フック: 確認中…")
+        self.item_ptt = rumps.MenuItem("プッシュトゥトーク: 確認中…")
+
+        self.mics = []
+        threading.Thread(target=self._load_mics, daemon=True).start()
+
+        self.daemon.ptt = ptt.PushToTalk(
+            self.cfg, on_state=self._ptt_state, on_result=self._ptt_result, log=daemon.log
+        )
 
         self.menu = [
             self.item_state,
@@ -72,6 +122,11 @@ class LuminellaApp(rumps.App):
             self.item_hooks,
             rumps.MenuItem("フックを導入", callback=self.install_hooks),
             rumps.MenuItem("フックを解除", callback=self.uninstall_hooks),
+            None,
+            self.item_ptt,
+            rumps.MenuItem("押して話すボタンを割り当て…", callback=self.assign_ptt),
+            rumps.MenuItem("プッシュトゥトークを無効化", callback=self.disable_ptt),
+            rumps.MenuItem("マイクを選ぶ…", callback=self.choose_mic),
             None,
             rumps.MenuItem("設定ファイルを開く", callback=self.open_config),
             rumps.MenuItem("ログを開く", callback=self.open_log),
@@ -116,11 +171,19 @@ class LuminellaApp(rumps.App):
         installed = hookinstall.is_installed()
         self.item_hooks.title = f"Claude Code フック: {'導入済み' if installed else '未導入'}"
 
+        switch = self.cfg.get("ptt_switch")
+        if not self.daemon.ptt.available():
+            self.item_ptt.title = "プッシュトゥトーク: エンジン未検出"
+        elif switch:
+            self.item_ptt.title = f"プッシュトゥトーク: SW{switch} を長押し"
+        else:
+            self.item_ptt.title = "プッシュトゥトーク: 未設定"
+
     # ---- button assignment ---------------------------------------------
 
     def _assign(self, key, label, colour):
         if not self.daemon.running:
-            rumps.alert(APP_NAME, "デバイスに接続していません。")
+            alert(APP_NAME, "デバイスに接続していません。")
             return
         previous = self.daemon.current()
         self.daemon.set_state(colour)
@@ -141,9 +204,11 @@ class LuminellaApp(rumps.App):
             APP_NAME, f"{label}にしたいボタンを押してください", "20秒以内 / リングの色が変わります"
         )
 
+    @guard
     def assign_approve(self, _):
         self._assign("approve_switch", "許可ボタン", "done")
 
+    @guard
     def assign_deny(self, _):
         self._assign("deny_switch", "拒否ボタン", "error")
 
@@ -159,45 +224,155 @@ class LuminellaApp(rumps.App):
             json.dump(stored, f, indent=2, ensure_ascii=False)
             f.write("\n")
 
+    # ---- push-to-talk ---------------------------------------------------
+
+    def _load_mics(self):
+        self.mics = ptt.list_input_devices()
+
+    def _ptt_state(self, state):
+        if state == "idle":
+            self.daemon.set_state("idle")
+        else:
+            self.daemon.set_state(state)
+
+    def _ptt_result(self, ok, text):
+        if ok:
+            preview = text if len(text) <= 90 else text[:90] + "…"
+            self.daemon.set_state("done", revert_to="idle", after=1.2)
+            rumps.notification("Luminella", "クリップボードにコピーしました", preview)
+        else:
+            self.daemon.set_state("error", revert_to="idle", after=1.5)
+            rumps.notification("Luminella", "プッシュトゥトーク", text)
+
+    @guard
+    def assign_ptt(self, _):
+        if not self.daemon.ptt.available():
+            alert(
+                APP_NAME,
+                "文字起こしエンジンが見つかりません。\n\n"
+                "次のいずれかを入れてください:\n"
+                "  pip install mlx-whisper   （高速・推奨）\n"
+                "  pip install openai-whisper",
+            )
+            return
+
+        def worker():
+            switch, has_release = self.daemon.read_hold(20)
+            self.daemon.set_state(previous)
+            if switch is None:
+                rumps.notification(APP_NAME, "押して話すボタン", "タイムアウトしました")
+                return
+            if not has_release:
+                # At least one switch on the device reports the press only, and
+                # push-to-talk stops on the release edge.
+                rumps.notification(
+                    APP_NAME, "SW%s は使えません" % switch,
+                    "このボタンは「離した」信号を送りません。別のボタンを選んでください",
+                )
+                return
+            self.cfg["ptt_switch"] = switch
+            self.daemon.cfg["ptt_switch"] = switch
+            self._save_config({"ptt_switch": switch})
+            rumps.notification(APP_NAME, "押して話すボタン", "SW%s に設定しました" % switch)
+
+        if not self.daemon.running:
+            alert(APP_NAME, "デバイスに接続していません。")
+            return
+        previous = self.daemon.current()
+        self.daemon.set_state("rec")
+        threading.Thread(target=worker, daemon=True).start()
+        rumps.notification(
+            APP_NAME, "押して話すボタンを押して、離してください", "20秒以内 / リングがピンクに光ります"
+        )
+
+    @guard
+    def disable_ptt(self, _):
+        self.cfg["ptt_switch"] = None
+        self.daemon.cfg["ptt_switch"] = None
+        self._save_config({"ptt_switch": None})
+        rumps.notification(APP_NAME, "プッシュトゥトーク", "無効にしました")
+
+    @guard
+    def choose_mic(self, _):
+        devices = self.mics or ptt.list_input_devices()
+        self.mics = devices
+        if not devices:
+            alert(APP_NAME, "マイクが見つかりませんでした。")
+            return
+        current = int(self.cfg.get("mic_index", 0))
+        listing = "\n".join(
+            "%s%d: %s" % ("→ " if i == current else "   ", i, n) for i, n in devices
+        )
+        window = rumps.Window(
+            title=APP_NAME,
+            message="使うマイクの番号を入力してください。\n\n" + listing,
+            default_text=str(current),
+            ok="設定",
+            cancel="キャンセル",
+            dimensions=(80, 22),
+        )
+        front()
+        response = window.run()
+        if not response.clicked:
+            return
+        try:
+            index = int(response.text.strip())
+        except ValueError:
+            alert(APP_NAME, "番号を入力してください。")
+            return
+        if index not in [i for i, _ in devices]:
+            alert(APP_NAME, "その番号のマイクはありません。")
+            return
+        self.cfg["mic_index"] = index
+        self.daemon.cfg["mic_index"] = index
+        self._save_config({"mic_index": index})
+        name = dict(devices)[index]
+        rumps.notification(APP_NAME, "マイク", "%d: %s に設定しました" % (index, name))
+
     # ---- hooks ----------------------------------------------------------
 
+    @guard
     def install_hooks(self, _):
         try:
             hookinstall.install_hook_script(resource("hook.py"))
             backup = hookinstall.install()
         except Exception as exc:
-            rumps.alert(APP_NAME, f"フックの導入に失敗しました:\n{exc}")
+            alert(APP_NAME, f"フックの導入に失敗しました:\n{exc}")
             return
         note = f"\n\nバックアップ: {os.path.basename(backup)}" if backup else ""
-        rumps.alert(
+        alert(
             APP_NAME,
             "Claude Code フックを導入しました。\n"
             "既に開いているセッションには次回起動から反映されます。" + note,
         )
 
+    @guard
     def uninstall_hooks(self, _):
         try:
             backup = hookinstall.uninstall()
         except Exception as exc:
-            rumps.alert(APP_NAME, f"フックの解除に失敗しました:\n{exc}")
+            alert(APP_NAME, f"フックの解除に失敗しました:\n{exc}")
             return
         note = f"\n\nバックアップ: {os.path.basename(backup)}" if backup else ""
-        rumps.alert(APP_NAME, "Claude Code フックを解除しました。" + note)
+        alert(APP_NAME, "Claude Code フックを解除しました。" + note)
 
     # ---- misc -----------------------------------------------------------
 
+    @guard
     def open_config(self, _):
         os.makedirs(config.STATE_DIR, exist_ok=True)
         if not os.path.exists(config.CONFIG_PATH):
             self._save_config({})
         subprocess.run(["/usr/bin/open", "-t", config.CONFIG_PATH], check=False)
 
+    @guard
     def open_log(self, _):
         if os.path.exists(config.LOG_PATH):
             subprocess.run(["/usr/bin/open", "-t", config.LOG_PATH], check=False)
         else:
-            rumps.alert(APP_NAME, "ログはまだありません。")
+            alert(APP_NAME, "ログはまだありません。")
 
+    @guard
     def reconnect(self, _):
         # Stopping the daemon is enough; the supervisor loop reconnects.
         self.daemon.running = False
@@ -208,6 +383,7 @@ class LuminellaApp(rumps.App):
             pass
         rumps.notification(APP_NAME, "再接続", "デバイスに接続し直しています…")
 
+    @guard
     def quit_app(self, _):
         self.stopping = True
         self.daemon.running = False
