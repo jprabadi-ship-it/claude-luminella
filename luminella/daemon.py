@@ -188,10 +188,12 @@ class Daemon:
             t = time.time()
 
             if mode == "breathe":
-                # 2.4s sine, floored at 15% so the ring never fully drops out
-                k = 0.15 + 0.85 * (0.5 + 0.5 * math.sin(2 * math.pi * t / 2.4))
+                # sine, floored at 15% so the ring never fully drops out
+                cycle = float(spec.get("period", 2.4))
+                k = 0.15 + 0.85 * (0.5 + 0.5 * math.sin(2 * math.pi * t / cycle))
             elif mode == "blink":
-                k = 1.0 if (t % 0.7) < 0.35 else 0.0
+                cycle = float(spec.get("period", 0.7))
+                k = 1.0 if (t % cycle) < cycle / 2 else 0.0
             else:
                 k = 1.0
 

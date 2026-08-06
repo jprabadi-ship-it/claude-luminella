@@ -47,6 +47,27 @@ def clean_env():
     return env
 
 
+def paste_to_focused():
+    """Send Cmd+V to whatever has focus.
+
+    Driving System Events rather than posting a CGEvent directly keeps the
+    Quartz bindings out of the bundle -- the same reasoning as calling ffmpeg
+    instead of linking it. Returns (ok, message).
+    """
+    script = 'tell application "System Events" to keystroke "v" using command down'
+    try:
+        r = subprocess.run(
+            ["/usr/bin/osascript", "-e", script],
+            capture_output=True, timeout=15, env=clean_env(),
+            encoding="utf-8", errors="replace",
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, str(exc)
+    if r.returncode != 0:
+        return False, (r.stderr or "").strip()[:200]
+    return True, ""
+
+
 def set_clipboard(text):
     """Put text on the clipboard, preferring the in-process pasteboard.
 
@@ -129,11 +150,12 @@ class PushToTalk:
     def __init__(self, cfg, on_state=None, on_result=None, log=print):
         self.cfg = cfg
         self.on_state = on_state or (lambda state: None)
-        self.on_result = on_result or (lambda ok, text: None)
+        self.on_result = on_result or (lambda ok, text, pasted=False: None)
         self.log = log
         self.proc = None
         self.path = None
         self.started_at = None
+        self.opened_at = None
         self.lock = threading.Lock()
 
     def available(self):
@@ -154,7 +176,7 @@ class PushToTalk:
             # count here makes some interfaces (e.g. a 192kHz 5.1 device) drop
             # out and yield silence; the transcriber resamples anyway.
             cmd = [
-                ffmpeg, "-hide_banner", "-loglevel", "error",
+                ffmpeg, "-hide_banner", "-loglevel", "info",
                 "-f", "avfoundation",
                 "-i", ":%d" % int(self.cfg.get("mic_index", 0)),
                 "-t", str(MAX_SECONDS),
@@ -164,7 +186,7 @@ class PushToTalk:
                 self.proc = subprocess.Popen(
                     cmd, stdin=subprocess.PIPE,
                     stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                    env=clean_env(),
+                    env=clean_env(), encoding="utf-8", errors="replace", bufsize=1,
                 )
             except OSError as exc:
                 self.log("ptt: ffmpeg failed to start: %s" % exc)
@@ -172,9 +194,38 @@ class PushToTalk:
                 self.on_result(False, "ffmpeg を起動できません")
                 return
             self.started_at = time.time()
-            self.log("ptt: recording (mic %s)" % self.cfg.get("mic_index", 0))
-            self.on_state("rec")
+            self.log("ptt: opening mic %s" % self.cfg.get("mic_index", 0))
+            self.on_state("warmup")
             proc = self.proc
+
+        def wait_until_live():
+            """Signal "speak now" only once the device is actually delivering.
+
+            A Continuity microphone can take three or four seconds to come up,
+            and nothing before that is captured -- the first words vanish. The
+            ring is the cue to start talking, so it must not turn on until
+            ffmpeg reports the input stream.
+            """
+            opened = None
+            try:
+                for line in proc.stderr:
+                    if "Input #0" in line:
+                        opened = time.time()
+                        break
+            except (OSError, ValueError):
+                pass
+            with self.lock:
+                still_ours = self.proc is proc
+            if not still_ours:
+                return
+            if opened:
+                self.opened_at = opened
+                self.log("ptt: mic live after %.2fs" % (opened - self.started_at))
+                self.on_state("rec")
+            else:
+                self.log("ptt: mic never reported ready")
+
+        threading.Thread(target=wait_until_live, daemon=True).start()
 
         def watchdog():
             time.sleep(MAX_SECONDS)
@@ -200,8 +251,10 @@ class PushToTalk:
         except (OSError, subprocess.TimeoutExpired):
             proc.kill()
 
-        held = time.time() - (started or time.time())
-        self.log("ptt: held %.2fs" % held)
+        live_from = self.opened_at or started or time.time()
+        held = time.time() - live_from
+        self.opened_at = None
+        self.log("ptt: captured %.2fs of audio" % held)
         if held < MIN_SECONDS:
             self._cleanup(path)
             self.on_state("idle")
@@ -361,7 +414,17 @@ class PushToTalk:
             return
 
         self._cleanup(path, outdir)
-        self.on_result(True, text)
+
+        if self.cfg.get("paste_to_focused"):
+            # Give the focused app a moment to be ready for the keystroke.
+            time.sleep(0.15)
+            ok, err = paste_to_focused()
+            if not ok:
+                self.log("ptt: paste failed: %s" % err)
+                self.on_result(True, text, pasted=False)
+                return
+
+        self.on_result(True, text, pasted=bool(self.cfg.get("paste_to_focused")))
 
     def _cleanup(self, path, outdir=None):
         for p in (path,):

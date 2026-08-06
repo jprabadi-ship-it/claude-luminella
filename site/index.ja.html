@@ -71,7 +71,7 @@
       </div>
       <div class="card">
         <h3>押して話す</h3>
-        <p>スティックを倒している間だけ録音し、戻すと文字に起こしてクリップボードに入れます。長いプロンプトを打つ代わりに、手元で喋って貼り付けられます。音声はこの Mac の中だけで処理されます。</p>
+        <p>スティックを倒している間だけ録音し、戻すと文字に起こして、入力中の欄にそのまま書き込みます。クリップボードにも残ります。長いプロンプトを打つ代わりに、手元で喋るだけ。音声はこの Mac の中だけで処理されます。</p>
       </div>
       <div class="card">
         <h3>メニューバーだけ</h3>
@@ -93,7 +93,8 @@
       <tr><td><strong>紫</strong></td><td>点滅</td><td>通知</td><td>画面を見る</td></tr>
       <tr><td><strong>赤</strong></td><td>点灯</td><td>拒否した／エラー</td><td>状況によります</td></tr>
       <tr><td><strong>緑</strong></td><td>点灯</td><td>許可した／応答完了</td><td>—</td></tr>
-      <tr><td><strong>ピンク</strong></td><td>呼吸</td><td>録音中（押して話す）</td><td>倒したまま喋る</td></tr>
+      <tr><td><strong>ピンク</strong></td><td>ゆっくり点滅</td><td>マイク準備中</td><td>まだ話さない</td></tr>
+      <tr><td><strong>ピンク</strong></td><td>点灯</td><td>録音中</td><td>倒したまま喋る</td></tr>
       <tr><td><strong>青紫</strong></td><td>点滅</td><td>文字起こし中</td><td>1秒ほど待つ</td></tr>
     </tbody></table>
     <p class="note" style="margin-top:20px">許可待ちで30秒操作がなければ、リングは実行中に戻り、通常どおり画面のプロンプトで操作できます。待ち時間も変更できます。</p>
@@ -110,8 +111,22 @@
       <tr><td>CPU</td><td>Apple Silicon（M1 以降）専用。Intel Mac では動作しません</td></tr>
       <tr><td>デバイス</td><td>BRAIN MAGIC Luminella（USB 接続）</td></tr>
       <tr><td>ソフト</td><td>Claude Code</td></tr>
-      <tr><td>権限</td><td>不要。ただし<strong>押して話す機能を使う場合はマイクの許可</strong>が要ります</td></tr>
+      <tr><td>権限</td><td>使う機能によります（下表）</td></tr>
     </tbody></table>
+
+    <h3 style="margin-top:32px">権限</h3>
+    <p class="lede">必要になるのは、その機能を使うときだけです。</p>
+    <table>
+      <tbody><tr><th>使い方</th><th>必要な権限</th></tr>
+      <tr><td>状態表示と許可・拒否だけ</td><td><strong>なし</strong></td></tr>
+      <tr><td>押して話す（クリップボードへ）</td><td>マイク</td></tr>
+      <tr><td>押して話す（入力欄へ直接）</td><td>マイク＋操作の許可</td></tr>
+    </tbody></table>
+    <p class="note" style="margin-top:20px">
+      入力欄への直接入力は、キー操作（Cmd+V）を送るため macOS の操作許可が必要です。
+      メニューでいつでも切り替えられ、<strong>オフにすればキー操作は一切送りません</strong>。
+      その場合もクリップボードには入るので、貼り付ければ同じことができます。
+    </p>
 
     <h3 style="margin-top:32px">押して話す機能を使う場合</h3>
     <p class="lede">この機能だけは外部のソフトが必要です。アプリには同梱していません。</p>
@@ -215,8 +230,13 @@
     </details>
 
     <details>
+      <summary>入力欄への直接入力をやめられますか？</summary>
+      <p>やめられます。メニューの「入力欄に直接入力」を切ればクリップボードに入るだけになり、キー操作は一切送らなくなります。操作の許可も不要です。既定では有効ですが、有効にする前に確認が出ます。</p>
+    </details>
+
+    <details>
       <summary>キー入力を記録していませんか？</summary>
-      <p>していません。macOS のアクセシビリティ権限も入力監視権限も要求しませんし、要求しない以上キーボードの入力を読むことはできません。読み取るのは Luminella 本体のボタンとスティックと、押して話す機能を使っている間のマイクだけです。</p>
+      <p>していません。macOS の入力監視権限を要求しないため、キーボードの入力を読むことはできません。読み取るのは Luminella 本体のボタンとスティックと、押して話す機能を使っている間のマイクだけです。入力欄への直接入力を有効にした場合、キー操作を<strong>送る</strong>ことはありますが、読み取ることはありません。</p>
     </details>
 
     <details>

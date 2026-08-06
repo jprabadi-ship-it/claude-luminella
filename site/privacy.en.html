@@ -68,12 +68,27 @@
   <p>This feature requires macOS microphone permission. <strong>If you do not use it, no permission is needed at all.</strong></p>
   <p>Transcription uses external tools (<code>ffmpeg</code> and <code>mlx-whisper</code>) that you install yourself; they are not bundled with the app. Those tools reach the network only to fetch the speech model the first time.</p>
 
+  <h2>Typing into the focused field</h2>
+  <p>When enabled, the transcript is pasted into whatever application you are typing in. This requires macOS automation permission (System Events).</p>
+  <ul>
+    <li>The only thing sent is <strong>a single Cmd+V</strong>. No other keystroke is ever sent.</li>
+    <li>It is sent only immediately after a transcription completes.</li>
+    <li>The app <strong>does not read</strong> anything from the window it pastes into.</li>
+    <li>It can be switched off from the menu. With it off, no keystroke is sent and no permission is required.</li>
+  </ul>
+
   <h2>Handling of input</h2>
-  <p>The app <strong>does not request</strong> macOS Accessibility or Input Monitoring permission. Without those permissions it is technically incapable of reading your keyboard or mouse input.</p>
+  <p>The app <strong>does not request</strong> macOS Input Monitoring permission. Without it, reading your keyboard is technically impossible. The paste above only <strong>sends</strong> a keystroke; it never reads one.</p>
   <p>The only input it reads is what the Luminella itself sends over the USB serial connection — which button was pressed and where the stick is — plus the microphone while push to talk is held. These are used only to decide approvals and to transcribe speech.</p>
 
   <h2>Permissions</h2>
-  <p>The status light and the approve/deny buttons require no special macOS permissions; the app communicates with a USB serial device and nothing else. Microphone permission is needed only for push to talk.</p>
+  <table>
+    <tr><th>What you use</th><th>Permission</th></tr>
+    <tr><td>Status light and approve/deny only</td><td>None</td></tr>
+    <tr><td>Push to talk (to the clipboard)</td><td>Microphone</td></tr>
+    <tr><td>Push to talk (into the focused field)</td><td>Microphone, automation</td></tr>
+  </table>
+  <p>Each is requested only when you use the feature that needs it.</p>
 
   <h2>Cost and external sites</h2>
   <p>The app is distributed free of charge and contains no in-app payments. The developer receives no payment information.</p>

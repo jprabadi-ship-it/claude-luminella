@@ -18,12 +18,11 @@ from AppKit import NSApplication
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from luminella import config, daemon, hookinstall, ptt
+from luminella import config, daemon, hookinstall, icon, ptt
 
 APP_NAME = "Luminella"
 
-# Menu bar glyph per daemon state. Colour is carried by the emoji because a
-# status item title cannot be tinted per-character.
+# Fallback glyphs, used only if the drawn icons cannot be produced.
 GLYPH = {
     "idle": "🔵",
     "busy": "🩵",
@@ -32,6 +31,7 @@ GLYPH = {
     "error": "🔴",
     "done": "🟢",
     "off": "⚫",
+    "warmup": "🩷",
     "rec": "🔴",
     "stt": "🟣",
 }
@@ -44,6 +44,7 @@ STATE_LABEL = {
     "error": "エラー / 拒否",
     "done": "完了 / 許可",
     "off": "停止",
+    "warmup": "マイク準備中",
     "rec": "録音中",
     "stt": "文字起こし中",
 }
@@ -95,8 +96,14 @@ def resource(name):
 
 class LuminellaApp(rumps.App):
     def __init__(self):
-        super().__init__(APP_NAME, title="⚫", quit_button=None)
+        super().__init__(APP_NAME, title="", quit_button=None)
         self.cfg = config.load()
+        try:
+            self.icons = icon.render_states(self.cfg["states"])
+        except Exception:
+            daemon.log("icon rendering failed\n%s" % traceback.format_exc())
+            self.icons = {}
+        self.shown_state = None
         self.daemon = daemon.Daemon(self.cfg)
         self.stopping = False
 
@@ -106,6 +113,8 @@ class LuminellaApp(rumps.App):
         self.item_ptt = rumps.MenuItem("プッシュトゥトーク: 確認中…")
         self.item_sound = rumps.MenuItem("効果音", callback=self.toggle_sound)
         self.item_sound.state = 1 if self.cfg.get("sound") else 0
+        self.item_paste = rumps.MenuItem("入力欄に直接入力", callback=self.toggle_paste)
+        self.item_paste.state = 1 if self.cfg.get("paste_to_focused") else 0
 
         self.mics = []
         threading.Thread(target=self._load_mics, daemon=True).start()
@@ -131,6 +140,7 @@ class LuminellaApp(rumps.App):
             rumps.MenuItem("押して話すボタンを割り当て…", callback=self.assign_ptt),
             rumps.MenuItem("プッシュトゥトークを無効化", callback=self.disable_ptt),
             rumps.MenuItem("マイクを選ぶ…", callback=self.choose_mic),
+            self.item_paste,
             None,
             self.item_sound,
             None,
@@ -166,7 +176,9 @@ class LuminellaApp(rumps.App):
     @rumps.timer(0.4)
     def refresh(self, _):
         state = self.daemon.current() if self.daemon.running else "off"
-        self.title = GLYPH.get(state, "⚫")
+        if state != self.shown_state:
+            self.shown_state = state
+            self._show_icon(state)
         self.item_state.title = f"状態: {STATE_LABEL.get(state, state)}"
 
         connected = bool(self.daemon.ser) and self.daemon.running
@@ -184,6 +196,21 @@ class LuminellaApp(rumps.App):
             self.item_ptt.title = f"プッシュトゥトーク: SW{switch} を長押し"
         else:
             self.item_ptt.title = "プッシュトゥトーク: 未設定"
+
+    def _show_icon(self, state):
+        path = self.icons.get(state)
+        if not path:
+            self.title = GLYPH.get(state, "⚫")
+            return
+        try:
+            self.icon = path
+            # rumps loads the file at its pixel size; the image is drawn at 2x
+            # so it has to be told the point size or it fills the whole bar.
+            self._icon_nsimage.setSize_((icon.PT, icon.PT))
+            self._nsapp.setStatusBarIcon()
+        except Exception:
+            daemon.log("icon update failed\n%s" % traceback.format_exc())
+            self.title = GLYPH.get(state, "⚫")
 
     # ---- button assignment ---------------------------------------------
 
@@ -266,6 +293,25 @@ class LuminellaApp(rumps.App):
         threading.Thread(target=worker, daemon=True).start()
 
     @guard
+    def toggle_paste(self, _):
+        enabled = not self.cfg.get("paste_to_focused")
+        if enabled:
+            front()
+            if not rumps.alert(
+                APP_NAME,
+                "文字起こしした内容を、入力中のアプリへ直接貼り付けます。\n\n"
+                "そのためにキー操作（Cmd+V）を送るので、macOS の操作許可が必要です。\n"
+                "初回に確認が出ます。\n\n"
+                "オフのままなら権限は一切不要で、クリップボードにだけ入ります。",
+                ok="有効にする", cancel="やめる",
+            ):
+                return
+        self.cfg["paste_to_focused"] = enabled
+        self.daemon.cfg["paste_to_focused"] = enabled
+        self.item_paste.state = 1 if enabled else 0
+        self._save_config({"paste_to_focused": enabled})
+
+    @guard
     def toggle_sound(self, _):
         enabled = not self.cfg.get("sound")
         self.cfg["sound"] = enabled
@@ -286,11 +332,12 @@ class LuminellaApp(rumps.App):
         else:
             self.daemon.set_state(state)
 
-    def _ptt_result(self, ok, text):
+    def _ptt_result(self, ok, text, pasted=False):
         if ok:
             preview = text if len(text) <= 90 else text[:90] + "…"
             self.daemon.set_state("done", revert_to="idle", after=1.2)
-            rumps.notification("Luminella", "クリップボードにコピーしました", preview)
+            title = "入力しました" if pasted else "クリップボードにコピーしました"
+            rumps.notification("Luminella", title, preview)
         else:
             self.daemon.set_state("error", revert_to="idle", after=1.5)
             rumps.notification("Luminella", "プッシュトゥトーク", text)

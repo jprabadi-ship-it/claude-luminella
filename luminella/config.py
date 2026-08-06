@@ -24,7 +24,10 @@ DEFAULTS = {
         "notify":  {"color": [180, 0, 255],  "mode": "blink"},
         "off":     {"color": [0, 0, 0],      "mode": "solid"},
         # push-to-talk
-        "rec":     {"color": [255, 0, 90],   "mode": "breathe"},
+        # Same pink throughout: blinking slowly means the microphone is not
+        # live yet, steady means speak.
+        "warmup":  {"color": [255, 0, 90],   "mode": "blink", "period": 1.6},
+        "rec":     {"color": [255, 0, 90],   "mode": "solid"},
         "stt":     {"color": [120, 90, 255], "mode": "blink"},
     },
     # Sound on state change. Names are macOS system sounds
@@ -37,6 +40,7 @@ DEFAULTS = {
         "done":   "Glass",
         "error":  "Basso",
         "notify": "Ping",
+        "warmup": None,
         "rec":    "Pop",
         "stt":    "Tink",
         "busy":   None,
@@ -68,6 +72,10 @@ DEFAULTS = {
     "ptt_stick_off": 20,
     # AVFoundation audio input index (see the menu for the device list).
     "mic_index": 0,
+    # Paste the transcript into whatever has focus, not just the clipboard.
+    # Needs macOS automation/accessibility permission; the clipboard alone
+    # needs none.
+    "paste_to_focused": True,
     "stt_language": "ja",
     # Trimming silence keeps whisper from inventing text to fill it, but the
     # filter can cut speech too; off until it is tuned.
