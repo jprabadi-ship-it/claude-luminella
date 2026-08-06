@@ -51,6 +51,7 @@ class Daemon:
         self.running = True
         self.last_rgb = None
         self.ptt = None
+        self.on_state_change = None
         self.stick_engaged = False
         self.last_stick = None
 
@@ -171,8 +172,16 @@ class Daemon:
 
     def animate_loop(self):
         period = 1.0 / max(1, self.cfg["fps"])
+        previous = None
         while self.running:
             name = self.current()
+            if name != previous:
+                previous = name
+                if self.on_state_change:
+                    try:
+                        self.on_state_change(name)
+                    except Exception as exc:
+                        log("state-change handler failed: %s" % exc)
             spec = self.cfg["states"].get(name, self.cfg["states"]["idle"])
             r, g, b = spec["color"]
             mode = spec.get("mode", "solid")

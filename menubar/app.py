@@ -104,9 +104,13 @@ class LuminellaApp(rumps.App):
         self.item_device = rumps.MenuItem("デバイス: 確認中…")
         self.item_hooks = rumps.MenuItem("Claude Code フック: 確認中…")
         self.item_ptt = rumps.MenuItem("プッシュトゥトーク: 確認中…")
+        self.item_sound = rumps.MenuItem("効果音", callback=self.toggle_sound)
+        self.item_sound.state = 1 if self.cfg.get("sound") else 0
 
         self.mics = []
         threading.Thread(target=self._load_mics, daemon=True).start()
+
+        self.daemon.on_state_change = self.play_state_sound
 
         self.daemon.ptt = ptt.PushToTalk(
             self.cfg, on_state=self._ptt_state, on_result=self._ptt_result, log=daemon.log
@@ -127,6 +131,8 @@ class LuminellaApp(rumps.App):
             rumps.MenuItem("押して話すボタンを割り当て…", callback=self.assign_ptt),
             rumps.MenuItem("プッシュトゥトークを無効化", callback=self.disable_ptt),
             rumps.MenuItem("マイクを選ぶ…", callback=self.choose_mic),
+            None,
+            self.item_sound,
             None,
             rumps.MenuItem("設定ファイルを開く", callback=self.open_config),
             rumps.MenuItem("ログを開く", callback=self.open_log),
@@ -223,6 +229,51 @@ class LuminellaApp(rumps.App):
         with open(config.CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(stored, f, indent=2, ensure_ascii=False)
             f.write("\n")
+
+    # ---- sound -----------------------------------------------------------
+
+    SOUND_DIR = "/System/Library/Sounds"
+
+    def play_state_sound(self, state):
+        """Play the sound mapped to a state, if any.
+
+        This shells out to afplay rather than using NSSound: inside the app
+        bundle NSSound reported success and produced nothing audible, while
+        afplay is verifiably heard. Popen without wait keeps the animation
+        loop from stalling on playback.
+        """
+        if not self.cfg.get("sound"):
+            return
+        name = (self.cfg.get("sounds") or {}).get(state)
+        if not name:
+            return
+        path = os.path.join(self.SOUND_DIR, name + ".aiff")
+        if not os.path.exists(path):
+            daemon.log("sound %r not found at %s" % (name, path))
+            return
+        def worker():
+            try:
+                r = subprocess.run(
+                    ["/usr/bin/afplay", path],
+                    capture_output=True, timeout=30, env=ptt.clean_env(),
+                    encoding="utf-8", errors="replace",
+                )
+                daemon.log("sound %s -> %s rc=%s err=%s" % (
+                    state, name, r.returncode, (r.stderr or "").strip()[:200]))
+            except Exception as exc:
+                daemon.log("sound %s failed: %r" % (state, exc))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    @guard
+    def toggle_sound(self, _):
+        enabled = not self.cfg.get("sound")
+        self.cfg["sound"] = enabled
+        self.daemon.cfg["sound"] = enabled
+        self.item_sound.state = 1 if enabled else 0
+        self._save_config({"sound": enabled})
+        if enabled:
+            self.play_state_sound("done")
 
     # ---- push-to-talk ---------------------------------------------------
 

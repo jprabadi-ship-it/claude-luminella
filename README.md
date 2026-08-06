@@ -126,6 +126,41 @@ Team ID が食い違い、dyld が
 
 色・モードは `~/.claude/luminella/config.json` の `states` で上書きできる。
 
+## 効果音
+
+色が変わるたびに macOS のシステムサウンドを鳴らす。メニューの「効果音」で切り替え。
+
+| 状態 | 音 |
+|---|---|
+| 許可待ち | Submarine |
+| 完了 / 許可 | Glass |
+| 拒否 / エラー | Basso |
+| 通知 | Ping |
+| 録音中 | Pop |
+| 文字起こし中 | Tink |
+| 実行中 / 待機 | 無音 |
+
+**実行中と待機は既定で無音。** ここはツール呼び出しのたびに何度も往復するため、
+鳴らすと使い物にならない。
+
+```json
+{
+  "sound": true,
+  "sounds": { "ask": "Hero", "busy": null }
+}
+```
+
+使える名前は `/System/Library/Sounds` にあるもの
+（`Basso Blow Bottle Frog Funk Glass Hero Morse Ping Pop Purr Sosumi Submarine Tink`）。
+`null` でその状態を無音にする。
+
+再生は `NSSound` ではなく `afplay` を使っている。**バンドル内の `NSSound` は
+成功を返しながら何も鳴らなかった。** `afplay` は終了コードで成否が分かる。
+
+状態変化の検出は `animate_loop` に一本化している。`set_state` は複数箇所から
+呼ばれるうえ、`done` から `idle` への自動復帰もあるため、毎フレーム現在の状態を
+解決している描画ループで差分を見るのが唯一の漏れない場所。
+
 ## プッシュトゥトーク
 
 スティックを倒している間だけ録音し、戻すと文字起こししてクリップボードに入れる。

@@ -27,6 +27,23 @@ DEFAULTS = {
         "rec":     {"color": [255, 0, 90],   "mode": "breathe"},
         "stt":     {"color": [120, 90, 255], "mode": "blink"},
     },
+    # Sound on state change. Names are macOS system sounds
+    # (/System/Library/Sounds); null means silent. States that fire constantly
+    # -- busy on every tool call, idle on every return -- are silent by
+    # default, since a chime per tool call is unusable.
+    "sound": True,
+    "sounds": {
+        "ask":    "Submarine",
+        "done":   "Glass",
+        "error":  "Basso",
+        "notify": "Ping",
+        "rec":    "Pop",
+        "stt":    "Tink",
+        "busy":   None,
+        "idle":   None,
+        "off":    None,
+    },
+
     # Which switch approves / rejects a gated tool call.
     "approve_switch": "1",
     "deny_switch": "5",
@@ -73,8 +90,8 @@ def load():
     except (OSError, ValueError):
         return cfg
     for key, value in user.items():
-        if key == "states" and isinstance(value, dict):
-            cfg["states"].update(value)
+        if key in ("states", "sounds") and isinstance(value, dict):
+            cfg[key].update(value)
         else:
             cfg[key] = value
     return cfg
