@@ -47,24 +47,53 @@ def clean_env():
     return env
 
 
-def paste_to_focused():
-    """Send Cmd+V to whatever has focus.
+KEYCODE_V = 9  # kVK_ANSI_V
 
-    Driving System Events rather than posting a CGEvent directly keeps the
-    Quartz bindings out of the bundle -- the same reasoning as calling ffmpeg
-    instead of linking it. Returns (ok, message).
-    """
-    script = 'tell application "System Events" to keystroke "v" using command down'
+
+def accessibility_trusted(prompt=False):
+    """Whether this process may post keyboard events."""
     try:
-        r = subprocess.run(
-            ["/usr/bin/osascript", "-e", script],
-            capture_output=True, timeout=15, env=clean_env(),
-            encoding="utf-8", errors="replace",
+        from ApplicationServices import (
+            AXIsProcessTrustedWithOptions,
+            kAXTrustedCheckOptionPrompt,
         )
-    except (OSError, subprocess.SubprocessError) as exc:
-        return False, str(exc)
-    if r.returncode != 0:
-        return False, (r.stderr or "").strip()[:200]
+
+        return bool(AXIsProcessTrustedWithOptions({kAXTrustedCheckOptionPrompt: bool(prompt)}))
+    except Exception:
+        return False
+
+
+def paste_to_focused():
+    """Send Cmd+V to whatever has focus. Returns (ok, message).
+
+    The event is posted by this process rather than by osascript. Routing it
+    through System Events made macOS attribute the keystroke to osascript,
+    which is not something the user can grant accessibility to -- the attempt
+    failed with "osascript is not allowed to send keystrokes". Posting
+    directly makes this app the actor, so the permission can be granted to it
+    by name.
+    """
+    if not accessibility_trusted():
+        return False, "アクセシビリティの許可がありません"
+    try:
+        from Quartz import (
+            CGEventCreateKeyboardEvent,
+            CGEventPost,
+            CGEventSetFlags,
+            kCGEventFlagMaskCommand,
+            kCGHIDEventTap,
+        )
+    except ImportError as exc:
+        return False, "Quartz を読み込めません: %s" % exc
+
+    try:
+        for pressed in (True, False):
+            event = CGEventCreateKeyboardEvent(None, KEYCODE_V, pressed)
+            CGEventSetFlags(event, kCGEventFlagMaskCommand)
+            CGEventPost(kCGHIDEventTap, event)
+            time.sleep(0.02)
+    except Exception as exc:
+        return False, repr(exc)
     return True, ""
 
 

@@ -104,6 +104,9 @@ class LuminellaApp(rumps.App):
             daemon.log("icon rendering failed\n%s" % traceback.format_exc())
             self.icons = {}
         self.shown_state = None
+        self._probed_at = 0.0
+        self._hooks_installed = False
+        self._stt_available = False
         self.daemon = daemon.Daemon(self.cfg)
         self.stopping = False
 
@@ -186,11 +189,19 @@ class LuminellaApp(rumps.App):
             "デバイス: 接続済み" if connected else "デバイス: 未接続（Core が掴んでいませんか）"
         )
 
-        installed = hookinstall.is_installed()
-        self.item_hooks.title = f"Claude Code フック: {'導入済み' if installed else '未導入'}"
+        # These read settings.json and probe the filesystem, so they are polled
+        # every few seconds rather than on every 0.4s tick.
+        now = time.time()
+        if now - self._probed_at > 4.0:
+            self._probed_at = now
+            self._hooks_installed = hookinstall.is_installed()
+            self._stt_available = self.daemon.ptt.available()
+        self.item_hooks.title = (
+            f"Claude Code フック: {'導入済み' if self._hooks_installed else '未導入'}"
+        )
 
         switch = self.cfg.get("ptt_switch")
-        if not self.daemon.ptt.available():
+        if not self._stt_available:
             self.item_ptt.title = "プッシュトゥトーク: エンジン未検出"
         elif switch:
             self.item_ptt.title = f"プッシュトゥトーク: SW{switch} を長押し"
@@ -306,6 +317,13 @@ class LuminellaApp(rumps.App):
                 ok="有効にする", cancel="やめる",
             ):
                 return
+            if not ptt.accessibility_trusted(prompt=True):
+                alert(
+                    APP_NAME,
+                    "システム設定 → プライバシーとセキュリティ → アクセシビリティ で\n"
+                    "Luminella を許可してください。\n\n"
+                    "許可するまでは、クリップボードにのみ入ります。",
+                )
         self.cfg["paste_to_focused"] = enabled
         self.daemon.cfg["paste_to_focused"] = enabled
         self.item_paste.state = 1 if enabled else 0

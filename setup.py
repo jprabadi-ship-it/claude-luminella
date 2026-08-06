@@ -17,14 +17,14 @@ DATA_FILES = [os.path.join(ROOT, "build", "stage", "hook.py")]
 OPTIONS = {
     "argv_emulation": False,
     "iconfile": os.path.join(ROOT, "build", "Luminella.icns"),
-    "packages": ["rumps", "serial", "luminella"],
+    "packages": ["rumps", "serial", "luminella", "Quartz", "ApplicationServices"],
     "includes": ["serial.tools", "serial.tools.list_ports"],
     "plist": {
         "CFBundleName": "Luminella",
         "CFBundleDisplayName": "Luminella",
         "CFBundleIdentifier": "com.miyashita.luminella",
-        "CFBundleVersion": "1.2.0",
-        "CFBundleShortVersionString": "1.2.0",
+        "CFBundleVersion": "1.2.1",
+        "CFBundleShortVersionString": "1.2.1",
         "LSUIElement": True,  # menu bar only: no Dock icon, no menu bar app menu
         # Push-to-talk records from the microphone; macOS requires this string
         # before it will even prompt, and denies silently without it.
@@ -33,7 +33,10 @@ OPTIONS = {
         # Pasting the transcript into the focused field drives System Events.
         "NSAppleEventsUsageDescription":
             "文字起こしした内容を、入力中のアプリに貼り付けるために使用します。",
-        "LSMinimumSystemVersion": "12.0",
+        # The bundled interpreter is built against the macOS 26 SDK, so the
+        # binaries will not load on anything older. Declaring 12.0 was simply
+        # untrue.
+        "LSMinimumSystemVersion": "26.0",
         "NSHumanReadableCopyright": "Luminella glow ring bridge for Claude Code",
     },
 }

@@ -38,6 +38,11 @@ Luminella Core / Orbital2 Core を介さず、シリアルポートを直接叩�
 `dist/Luminella.dmg` を開き、`Luminella.app` を Applications にドラッグする。
 起動するとメニューバーに常駐する（Dock には出ない）。
 
+**macOS 26 以降 / Apple Silicon 専用。** 同梱の Python が macOS 26 SDK で
+ビルドされているため、それより古い OS ではバイナリが読み込めない。
+`LSMinimumSystemVersion` は実測に合わせて 26.0 を宣言している
+（`otool -l` の `minos` で確認できる）。
+
 メニューから **「フックを導入」** を選ぶと、`~/.claude/settings.json` に
 Luminella のフックが追記される。既存のフックには触らず追記のみで、
 実行前にタイムスタンプ付きバックアップが作られる。**「フックを解除」** で元に戻る。
