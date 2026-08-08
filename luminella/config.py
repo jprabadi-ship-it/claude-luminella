@@ -51,6 +51,9 @@ DEFAULTS = {
     # Raise the session's window when it asks for approval. Off by default:
     # stealing focus is intrusive, and the ring already says something waits.
     "focus_on_ask": False,
+    # Post a notification naming the session that is asking. The ring says
+    # something is waiting; with several sessions it cannot say which.
+    "notify_on_ask": True,
 
     # Which switch approves / rejects a gated tool call.
     "approve_switch": "1",

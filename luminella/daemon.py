@@ -463,7 +463,7 @@ class Daemon:
                 timeout = float(req.get("timeout", self.cfg["ask_timeout"]))
                 if self.on_ask:
                     try:
-                        self.on_ask(req.get("pids") or [])
+                        self.on_ask(req)
                     except Exception as exc:
                         log("on_ask failed: %s" % exc)
                 reply = {"decision": self.ask(timeout)}

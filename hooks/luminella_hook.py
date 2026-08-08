@@ -137,10 +137,11 @@ def ancestor_pids(limit=15):
 
 
 def ask(tool, timeout):
-    return request(
-        {"cmd": "ask", "tool": tool, "timeout": timeout, "pids": ancestor_pids()},
-        timeout=timeout + 10,
-    )
+    payload = {"cmd": "ask", "tool": tool, "timeout": timeout, "pids": ancestor_pids()}
+    # Which session is asking, so the notification can say so. With several
+    # running, "waiting for approval" on its own does not tell you where to go.
+    payload.update(SESSION)
+    return request(payload, timeout=timeout + 10)
 
 
 def emit_pretooluse(decision, reason):

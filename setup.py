@@ -17,7 +17,8 @@ DATA_FILES = [os.path.join(ROOT, "build", "stage", "hook.py")]
 OPTIONS = {
     "argv_emulation": False,
     "iconfile": os.path.join(ROOT, "build", "Clauminella.icns"),
-    "packages": ["rumps", "serial", "luminella", "Quartz", "ApplicationServices"],
+    "packages": ["rumps", "serial", "luminella", "Quartz", "ApplicationServices",
+                 "UserNotifications"],
     "includes": ["serial.tools", "serial.tools.list_ports"],
     "plist": {
         "CFBundleName": "Clauminella",

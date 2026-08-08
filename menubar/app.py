@@ -113,6 +113,14 @@ class LuminellaApp(rumps.App):
             self.icons = {}
         self.shown_state = None
         self._logged_icon = False
+        # Notifications are posted from the rumps timer, which runs on the
+        # main thread. Everything that wants to notify -- the daemon's socket
+        # handler, the push-to-talk worker -- runs on other threads, and
+        # AppKit quietly does nothing when called from those.
+        self._pending_notes = []
+        self._notes_lock = threading.Lock()
+        self._notification_centre = None
+        self._prepare_notifications()
         self._probed_at = 0.0
         self._hooks_installed = False
         self._stt_available = False
@@ -132,12 +140,14 @@ class LuminellaApp(rumps.App):
         self.item_paste.state = 1 if self.cfg.get("paste_to_focused") else 0
         self.item_focus = rumps.MenuItem("許可待ちで前面に出す", callback=self.toggle_focus)
         self.item_focus.state = 1 if self.cfg.get("focus_on_ask") else 0
+        self.item_notify = rumps.MenuItem("許可待ちを通知", callback=self.toggle_notify)
+        self.item_notify.state = 1 if self.cfg.get("notify_on_ask") else 0
 
         self.mics = []
         threading.Thread(target=self._load_mics, daemon=True).start()
 
         self.daemon.on_state_change = self.play_state_sound
-        self.daemon.on_ask = self.focus_asking_session
+        self.daemon.on_ask = self.on_ask
         self.daemon.on_resolve_pid = self.is_gui_app
 
         self.daemon.ptt = ptt.PushToTalk(
@@ -164,6 +174,7 @@ class LuminellaApp(rumps.App):
             self.item_paste,
             None,
             self.item_focus,
+            self.item_notify,
             self.item_sound,
             None,
             rumps.MenuItem("設定ファイルを開く", callback=self.open_config),
@@ -211,6 +222,8 @@ class LuminellaApp(rumps.App):
             "デバイス: 接続済み" if connected else "デバイス: 未接続（Core が掴んでいませんか）"
         )
 
+        self._drain_notes()
+
         rows = self.daemon.session_list()
         padded = rows + [None] * len(self.session_slots)
         for slot, row in zip(self.session_slots, padded):
@@ -254,6 +267,71 @@ class LuminellaApp(rumps.App):
         else:
             self.item_ptt.title = "プッシュトゥトーク: 未設定"
 
+    def notify(self, title, message=""):
+        with self._notes_lock:
+            self._pending_notes.append((title, message))
+
+    def _prepare_notifications(self):
+        """Ask once for permission to post banners.
+
+        rumps posts through NSUserNotification, which current macOS accepts
+        and silently discards -- no banner, no error, and the app still
+        appears in System Settings, so everything looks configured.
+        UserNotifications is the API that still delivers.
+        """
+        try:
+            from UserNotifications import (
+                UNAuthorizationOptionAlert,
+                UNAuthorizationOptionSound,
+                UNUserNotificationCenter,
+            )
+
+            centre = UNUserNotificationCenter.currentNotificationCenter()
+            centre.requestAuthorizationWithOptions_completionHandler_(
+                UNAuthorizationOptionAlert | UNAuthorizationOptionSound,
+                lambda granted, error: daemon.log(
+                    "notifications: granted=%s error=%s" % (granted, error)),
+            )
+            self._notification_centre = centre
+            daemon.log("notifications: using UserNotifications")
+        except Exception:
+            self._notification_centre = None
+            daemon.log("notifications: unavailable\n%s" % traceback.format_exc())
+
+    def _post_note(self, title, message):
+        if self._notification_centre is not None:
+            try:
+                import uuid
+
+                from UserNotifications import (
+                    UNMutableNotificationContent,
+                    UNNotificationRequest,
+                )
+
+                content = UNMutableNotificationContent.alloc().init()
+                content.setTitle_(title)
+                if message:
+                    content.setBody_(message)
+                request = UNNotificationRequest.requestWithIdentifier_content_trigger_(
+                    str(uuid.uuid4()), content, None
+                )
+                self._notification_centre.addNotificationRequest_withCompletionHandler_(
+                    request, None
+                )
+                return
+            except Exception as exc:
+                daemon.log("notification failed: %r (%s)" % (exc, title))
+        try:
+            rumps.notification(APP_NAME, title, message)
+        except Exception as exc:
+            daemon.log("fallback notification failed: %r (%s)" % (exc, title))
+
+    def _drain_notes(self):
+        with self._notes_lock:
+            pending, self._pending_notes = self._pending_notes, []
+        for title, message in pending:
+            self._post_note(title, message)
+
     def _show_icon(self, state):
         path = self.icons.get(state)
         if not path:
@@ -295,16 +373,15 @@ class LuminellaApp(rumps.App):
             switch = self.daemon.read_switch(20)
             self.daemon.set_state(previous)
             if switch is None:
-                rumps.notification(APP_NAME, f"{label}の割り当て", "タイムアウトしました")
+                self.notify(f"{label}の割り当て", "タイムアウトしました")
                 return
             self.cfg[key] = switch
             self.daemon.cfg[key] = switch
             self._save_config({key: switch})
-            rumps.notification(APP_NAME, f"{label}の割り当て", f"SW{switch} に設定しました")
+            self.notify(f"{label}の割り当て", f"SW{switch} に設定しました")
 
         threading.Thread(target=worker, daemon=True).start()
-        rumps.notification(
-            APP_NAME, f"{label}にしたいボタンを押してください", "20秒以内 / リングの色が変わります"
+        self.notify(f"{label}にしたいボタンを押してください", "20秒以内 / リングの色が変わります"
         )
 
     @guard
@@ -337,6 +414,17 @@ class LuminellaApp(rumps.App):
             return False
         return app is not None and app.activationPolicy() == 0
 
+    def on_ask(self, req):
+        """Called when a session asks for approval."""
+        pids = req.get("pids") or []
+        if self.cfg.get("notify_on_ask"):
+            label = os.path.basename(req.get("cwd") or "") or "セッション"
+            tool = req.get("tool") or ""
+            self.notify("許可待ち: %s" % label,
+                "%s の実行を待っています" % tool if tool else "操作の許可を待っています",
+            )
+        self.focus_asking_session(pids)
+
     def focus_asking_session(self, pids):
         """Raise the application whose session is waiting for approval.
 
@@ -357,6 +445,14 @@ class LuminellaApp(rumps.App):
             app.activateWithOptions_(1 << 1)  # NSApplicationActivateIgnoringOtherApps
             return
         daemon.log("focus: no GUI app found in %r" % (pids[:6],))
+
+    @guard
+    def toggle_notify(self, _):
+        enabled = not self.cfg.get("notify_on_ask")
+        self.cfg["notify_on_ask"] = enabled
+        self.daemon.cfg["notify_on_ask"] = enabled
+        self.item_notify.state = 1 if enabled else 0
+        self._save_config({"notify_on_ask": enabled})
 
     @guard
     def toggle_focus(self, _):
@@ -453,10 +549,10 @@ class LuminellaApp(rumps.App):
             preview = text if len(text) <= 90 else text[:90] + "…"
             self.daemon.set_state("done", revert_to="idle", after=1.2)
             title = "入力しました" if pasted else "クリップボードにコピーしました"
-            rumps.notification(APP_NAME, title, preview)
+            self.notify(title, preview)
         else:
             self.daemon.set_state("error", revert_to="idle", after=1.5)
-            rumps.notification(APP_NAME, "プッシュトゥトーク", text)
+            self.notify("プッシュトゥトーク", text)
 
     @guard
     def assign_ptt(self, _):
@@ -474,20 +570,19 @@ class LuminellaApp(rumps.App):
             switch, has_release = self.daemon.read_hold(20)
             self.daemon.set_state(previous)
             if switch is None:
-                rumps.notification(APP_NAME, "押して話すボタン", "タイムアウトしました")
+                self.notify("押して話すボタン", "タイムアウトしました")
                 return
             if not has_release:
                 # At least one switch on the device reports the press only, and
                 # push-to-talk stops on the release edge.
-                rumps.notification(
-                    APP_NAME, "SW%s は使えません" % switch,
+                self.notify("SW%s は使えません" % switch,
                     "このボタンは「離した」信号を送りません。別のボタンを選んでください",
                 )
                 return
             self.cfg["ptt_switch"] = switch
             self.daemon.cfg["ptt_switch"] = switch
             self._save_config({"ptt_switch": switch})
-            rumps.notification(APP_NAME, "押して話すボタン", "SW%s に設定しました" % switch)
+            self.notify("押して話すボタン", "SW%s に設定しました" % switch)
 
         if not self.daemon.running:
             alert(APP_NAME, "デバイスに接続していません。")
@@ -495,8 +590,7 @@ class LuminellaApp(rumps.App):
         previous = self.daemon.current()
         self.daemon.set_state("rec")
         threading.Thread(target=worker, daemon=True).start()
-        rumps.notification(
-            APP_NAME, "押して話すボタンを押して、離してください", "20秒以内 / リングがピンクに光ります"
+        self.notify("押して話すボタンを押して、離してください", "20秒以内 / リングがピンクに光ります"
         )
 
     @guard
@@ -504,7 +598,7 @@ class LuminellaApp(rumps.App):
         self.cfg["ptt_switch"] = None
         self.daemon.cfg["ptt_switch"] = None
         self._save_config({"ptt_switch": None})
-        rumps.notification(APP_NAME, "プッシュトゥトーク", "無効にしました")
+        self.notify("プッシュトゥトーク", "無効にしました")
 
     @guard
     def choose_mic(self, _):
@@ -541,7 +635,7 @@ class LuminellaApp(rumps.App):
         self.daemon.cfg["mic_index"] = index
         self._save_config({"mic_index": index})
         name = dict(devices)[index]
-        rumps.notification(APP_NAME, "マイク", "%d: %s に設定しました" % (index, name))
+        self.notify("マイク", "%d: %s に設定しました" % (index, name))
 
     # ---- hooks ----------------------------------------------------------
 
@@ -595,7 +689,7 @@ class LuminellaApp(rumps.App):
                 self.daemon.ser.close()
         except Exception:
             pass
-        rumps.notification(APP_NAME, "再接続", "デバイスに接続し直しています…")
+        self.notify("再接続", "デバイスに接続し直しています…")
 
     @guard
     def quit_app(self, _):
