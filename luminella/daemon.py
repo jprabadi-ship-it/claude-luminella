@@ -62,6 +62,7 @@ class Daemon:
         self.ptt = None
         self.on_state_change = None
         self.on_ask = None
+        self.on_notify = None
         self.on_resolve_pid = None
         self.stick_engaged = False
         self.stick_direction = None
@@ -456,6 +457,13 @@ class Daemon:
                         revert_to=req.get("revert_to", "idle"), after=after,
                         pid=self.session_pid,
                     )
+                    # Waiting for input is as much a stop as waiting for
+                    # approval; the ring alone cannot reach you across the room.
+                    if name == "notify" and self.on_notify:
+                        try:
+                            self.on_notify(req)
+                        except Exception as exc:
+                            log("on_notify failed: %s" % exc)
                 else:
                     self.set_state(name, revert_to=req.get("revert_to", "idle"), after=after)
                 reply = {"ok": True, "state": name}

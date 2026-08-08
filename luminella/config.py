@@ -54,6 +54,9 @@ DEFAULTS = {
     # Post a notification naming the session that is asking. The ring says
     # something is waiting; with several sessions it cannot say which.
     "notify_on_ask": True,
+    # Waiting for input fires far more often than waiting for approval, so it
+    # gets its own switch rather than riding on the same one.
+    "notify_on_idle": True,
 
     # Which switch approves / rejects a gated tool call.
     "approve_switch": "1",

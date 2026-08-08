@@ -142,12 +142,15 @@ class LuminellaApp(rumps.App):
         self.item_focus.state = 1 if self.cfg.get("focus_on_ask") else 0
         self.item_notify = rumps.MenuItem("許可待ちを通知", callback=self.toggle_notify)
         self.item_notify.state = 1 if self.cfg.get("notify_on_ask") else 0
+        self.item_notify_idle = rumps.MenuItem("入力待ちを通知", callback=self.toggle_notify_idle)
+        self.item_notify_idle.state = 1 if self.cfg.get("notify_on_idle") else 0
 
         self.mics = []
         threading.Thread(target=self._load_mics, daemon=True).start()
 
         self.daemon.on_state_change = self.play_state_sound
         self.daemon.on_ask = self.on_ask
+        self.daemon.on_notify = self.on_notify
         self.daemon.on_resolve_pid = self.is_gui_app
 
         self.daemon.ptt = ptt.PushToTalk(
@@ -175,6 +178,7 @@ class LuminellaApp(rumps.App):
             None,
             self.item_focus,
             self.item_notify,
+            self.item_notify_idle,
             self.item_sound,
             None,
             rumps.MenuItem("設定ファイルを開く", callback=self.open_config),
@@ -414,16 +418,41 @@ class LuminellaApp(rumps.App):
             return False
         return app is not None and app.activationPolicy() == 0
 
+    @staticmethod
+    def _stamp(label):
+        """Trailing detail that makes each notification's text unique.
+
+        Tools that watch Notification Center drop a banner whose text repeats
+        one they have already seen, so a second identical wait would never
+        reach them. The time is what varies; the label is there to be useful.
+        """
+        return "（%s / %s）" % (time.strftime("%H:%M:%S"), label)
+
+    @staticmethod
+    def _label_of(req):
+        return os.path.basename(req.get("cwd") or "") or "セッション"
+
     def on_ask(self, req):
         """Called when a session asks for approval."""
         pids = req.get("pids") or []
         if self.cfg.get("notify_on_ask"):
-            label = os.path.basename(req.get("cwd") or "") or "セッション"
+            label = self._label_of(req)
             tool = req.get("tool") or ""
-            self.notify("許可待ち: %s" % label,
-                "%s の実行を待っています" % tool if tool else "操作の許可を待っています",
-            )
+            body = "%s の実行を待っています" % tool if tool else "操作の許可を待っています"
+            self.notify("許可待ち: %s" % label, body + self._stamp(label))
         self.focus_asking_session(pids)
+
+    def on_notify(self, req):
+        """Called when a session is waiting on the person, not on a decision.
+
+        Deliberately does not raise the window: this fires far more often than
+        an approval request, and pulling focus every time would be worse than
+        missing one.
+        """
+        if not self.cfg.get("notify_on_idle"):
+            return
+        label = self._label_of(req)
+        self.notify("入力待ち: %s" % label, "入力を待っています" + self._stamp(label))
 
     def focus_asking_session(self, pids):
         """Raise the application whose session is waiting for approval.
@@ -445,6 +474,14 @@ class LuminellaApp(rumps.App):
             app.activateWithOptions_(1 << 1)  # NSApplicationActivateIgnoringOtherApps
             return
         daemon.log("focus: no GUI app found in %r" % (pids[:6],))
+
+    @guard
+    def toggle_notify_idle(self, _):
+        enabled = not self.cfg.get("notify_on_idle")
+        self.cfg["notify_on_idle"] = enabled
+        self.daemon.cfg["notify_on_idle"] = enabled
+        self.item_notify_idle.state = 1 if enabled else 0
+        self._save_config({"notify_on_idle": enabled})
 
     @guard
     def toggle_notify(self, _):
