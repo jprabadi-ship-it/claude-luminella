@@ -64,8 +64,17 @@ if [ -z "${NO_INSTALL:-}" ]; then
   LOCAL_ID="${LOCAL_SIGN_ID:-$(security find-identity -v -p codesigning 2>/dev/null |
     grep -o '"Apple Development: [^"]*"' | head -1 | tr -d '"')}"
 
-  pkill -f "Clauminella.app/Contents/MacOS/Luminella" 2>/dev/null || true
-  sleep 1
+  # Match on the bundle directory alone. Spelling out the executable name here
+  # is how a stale process survived three builds after the rename: the pattern
+  # still said Luminella, matched nothing, and the old binary kept running
+  # while the files on disk were replaced underneath it.
+  pkill -f "/Clauminella.app/" 2>/dev/null || true
+  sleep 1.5
+  if pgrep -f "/Clauminella.app/" >/dev/null 2>&1; then
+    echo "WARNING: an old instance is still running -- forcing"
+    pkill -9 -f "/Clauminella.app/" 2>/dev/null || true
+    sleep 1
+  fi
   rm -rf /Applications/Clauminella.app
   cp -R "$APP" /Applications/Clauminella.app
 

@@ -63,6 +63,108 @@ def accessibility_trusted(prompt=False):
         return False
 
 
+# Roles that accept typed text. Anything else -- a scroll area, a list, a
+# button -- would swallow the paste silently.
+TEXT_ROLES = {"AXTextArea", "AXTextField", "AXComboBox", "AXSearchField"}
+
+
+def _focused_element(app):
+    from ApplicationServices import (
+        AXUIElementCopyAttributeValue,
+        kAXFocusedUIElementAttribute,
+    )
+
+    err, focused = AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute, None)
+    return focused if err == 0 else None
+
+
+def _role(element):
+    from ApplicationServices import AXUIElementCopyAttributeValue, kAXRoleAttribute
+
+    err, role = AXUIElementCopyAttributeValue(element, kAXRoleAttribute, None)
+    return role if err == 0 else None
+
+
+# An Electron window nests far deeper than a native one: in Claude the input
+# sits 27 levels down and takes about 1200 elements to reach. Limits of 12 and
+# 400 -- reasonable for a Cocoa app -- never came close.
+MAX_DEPTH = 40
+MAX_ELEMENTS = 20000
+
+
+def _find_text_element(element, depth=0, budget=None):
+    """Depth-first search for something that accepts text."""
+    from ApplicationServices import AXUIElementCopyAttributeValue, kAXChildrenAttribute
+
+    if budget is None:
+        budget = [MAX_ELEMENTS]
+    if depth > MAX_DEPTH or budget[0] <= 0:
+        return None
+    budget[0] -= 1
+    if _role(element) in TEXT_ROLES:
+        return element
+    err, children = AXUIElementCopyAttributeValue(element, kAXChildrenAttribute, None)
+    if err != 0 or not children:
+        return None
+    for child in children:
+        found = _find_text_element(child, depth + 1, budget)
+        if found is not None:
+            return found
+    return None
+
+
+def ensure_text_focus():
+    """Make sure a text field has focus. Returns (ok, note).
+
+    Scrolling through history moves focus off the input, and a Cmd+V then goes
+    nowhere. Rather than paste into the void, check what is focused and, if it
+    cannot take text, look for a field in the focused window and focus that.
+    """
+    try:
+        from AppKit import NSWorkspace
+        from ApplicationServices import (
+            AXUIElementCreateApplication,
+            AXUIElementCopyAttributeValue,
+            AXUIElementSetAttributeValue,
+            kAXFocusedAttribute,
+            kAXFocusedWindowAttribute,
+        )
+    except ImportError as exc:
+        return True, "AX を読み込めません (%s)" % exc  # do not block the paste
+
+    front = NSWorkspace.sharedWorkspace().frontmostApplication()
+    if front is None:
+        return True, "最前面アプリが取得できません"
+    app = AXUIElementCreateApplication(front.processIdentifier())
+    # Chromium-based apps keep their accessibility tree off until asked.
+    try:
+        AXUIElementSetAttributeValue(app, "AXManualAccessibility", True)
+    except Exception:
+        pass
+
+    where = "%s(pid %s)" % (front.localizedName(), front.processIdentifier())
+    focused = _focused_element(app)
+    role = _role(focused) if focused is not None else None
+    if role in TEXT_ROLES:
+        return True, "%s の %s に貼り付けます" % (where, role)
+
+    err, window = AXUIElementCopyAttributeValue(app, kAXFocusedWindowAttribute, None)
+    if err != 0 or window is None:
+        return False, "%s: フォーカス中のウィンドウがありません (role=%s)" % (where, role)
+    started = time.time()
+    target = _find_text_element(window)
+    took = time.time() - started
+    if target is None:
+        return False, "%s: 入力欄が見つかりません (role=%s, %.1fs)" % (where, role, took)
+    AXUIElementSetAttributeValue(target, kAXFocusedAttribute, True)
+    time.sleep(0.05)
+    refocused = _focused_element(app)
+    new_role = _role(refocused) if refocused is not None else None
+    if new_role in TEXT_ROLES:
+        return True, "%s: %s から %s へフォーカスを戻しました (%.1fs)" % (where, role, new_role, took)
+    return False, "%s: フォーカスを移せません (%s -> %s)" % (where, role, new_role)
+
+
 def paste_to_focused():
     """Send Cmd+V to whatever has focus. Returns (ok, message).
 
@@ -447,7 +549,14 @@ class PushToTalk:
         if self.cfg.get("paste_to_focused"):
             # Give the focused app a moment to be ready for the keystroke.
             time.sleep(0.15)
+            ready, note = ensure_text_focus()
+            if note:
+                self.log("ptt: focus: %s" % note)
+            if not ready:
+                self.on_result(True, text, pasted=False)
+                return
             ok, err = paste_to_focused()
+            self.log("ptt: paste sent (ok=%s)" % ok)
             if not ok:
                 self.log("ptt: paste failed: %s" % err)
                 self.on_result(True, text, pasted=False)
