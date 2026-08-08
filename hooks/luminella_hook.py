@@ -97,8 +97,40 @@ def set_state(state, revert_to=None, after=None):
     return request(payload, timeout=2.0)
 
 
+def ancestor_pids(limit=15):
+    """This process's parents, nearest first.
+
+    The hook runs inside the Claude Code process tree, so the application the
+    session belongs to is somewhere up this chain. Deciding which entry is a
+    real GUI app needs AppKit, which the hook deliberately cannot import, so
+    the list is handed to the app to resolve.
+    """
+    pids, pid = [], os.getpid()
+    for _ in range(limit):
+        try:
+            out = subprocess.run(
+                ["/bin/ps", "-o", "ppid=", "-p", str(pid)],
+                capture_output=True, text=True, timeout=5,
+            ).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            break
+        if not out:
+            break
+        pids.append(pid)
+        try:
+            pid = int(out)
+        except ValueError:
+            break
+        if pid <= 1:
+            break
+    return pids
+
+
 def ask(tool, timeout):
-    return request({"cmd": "ask", "tool": tool, "timeout": timeout}, timeout=timeout + 10)
+    return request(
+        {"cmd": "ask", "tool": tool, "timeout": timeout, "pids": ancestor_pids()},
+        timeout=timeout + 10,
+    )
 
 
 def emit_pretooluse(decision, reason):

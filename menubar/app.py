@@ -14,7 +14,7 @@ import time
 import traceback
 
 import rumps
-from AppKit import NSApplication
+from AppKit import NSApplication, NSRunningApplication
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -118,11 +118,14 @@ class LuminellaApp(rumps.App):
         self.item_sound.state = 1 if self.cfg.get("sound") else 0
         self.item_paste = rumps.MenuItem("入力欄に直接入力", callback=self.toggle_paste)
         self.item_paste.state = 1 if self.cfg.get("paste_to_focused") else 0
+        self.item_focus = rumps.MenuItem("許可待ちで前面に出す", callback=self.toggle_focus)
+        self.item_focus.state = 1 if self.cfg.get("focus_on_ask") else 0
 
         self.mics = []
         threading.Thread(target=self._load_mics, daemon=True).start()
 
         self.daemon.on_state_change = self.play_state_sound
+        self.daemon.on_ask = self.focus_asking_session
 
         self.daemon.ptt = ptt.PushToTalk(
             self.cfg, on_state=self._ptt_state, on_result=self._ptt_result, log=daemon.log
@@ -145,6 +148,7 @@ class LuminellaApp(rumps.App):
             rumps.MenuItem("マイクを選ぶ…", callback=self.choose_mic),
             self.item_paste,
             None,
+            self.item_focus,
             self.item_sound,
             None,
             rumps.MenuItem("設定ファイルを開く", callback=self.open_config),
@@ -219,6 +223,11 @@ class LuminellaApp(rumps.App):
             # so it has to be told the point size or it fills the whole bar.
             self._icon_nsimage.setSize_((icon.PT, icon.PT))
             self._nsapp.setStatusBarIcon()
+            # rumps writes the app name into the status item whenever both the
+            # title and the image are empty, which is the case for the moment
+            # before the first icon is drawn -- and it never takes the name
+            # back out. Clear it so the ring stands alone.
+            self._nsapp.nsstatusitem.setTitle_("")
         except Exception:
             daemon.log("icon update failed\n%s" % traceback.format_exc())
             self.title = GLYPH.get(state, "⚫")
@@ -267,6 +276,37 @@ class LuminellaApp(rumps.App):
         with open(config.CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(stored, f, indent=2, ensure_ascii=False)
             f.write("\n")
+
+    # ---- focus -----------------------------------------------------------
+
+    def focus_asking_session(self, pids):
+        """Raise the application whose session is waiting for approval.
+
+        The hook sends its ancestry; the first entry that is a regular GUI
+        application is the terminal or app hosting that session. Without this
+        the ring says something is waiting but not where.
+        """
+        if not self.cfg.get("focus_on_ask") or not pids:
+            return
+        for pid in pids:
+            try:
+                app = NSRunningApplication.runningApplicationWithProcessIdentifier_(int(pid))
+            except Exception:
+                continue
+            if app is None or app.activationPolicy() != 0:
+                continue
+            daemon.log("focus: raising %s (pid %s)" % (app.localizedName(), pid))
+            app.activateWithOptions_(1 << 1)  # NSApplicationActivateIgnoringOtherApps
+            return
+        daemon.log("focus: no GUI app found in %r" % (pids[:6],))
+
+    @guard
+    def toggle_focus(self, _):
+        enabled = not self.cfg.get("focus_on_ask")
+        self.cfg["focus_on_ask"] = enabled
+        self.daemon.cfg["focus_on_ask"] = enabled
+        self.item_focus.state = 1 if enabled else 0
+        self._save_config({"focus_on_ask": enabled})
 
     # ---- sound -----------------------------------------------------------
 

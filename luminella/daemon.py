@@ -52,6 +52,7 @@ class Daemon:
         self.last_rgb = None
         self.ptt = None
         self.on_state_change = None
+        self.on_ask = None
         self.stick_engaged = False
         self.last_stick = None
 
@@ -314,6 +315,11 @@ class Daemon:
                 reply = {"ok": True, "state": name}
             elif cmd == "ask":
                 timeout = float(req.get("timeout", self.cfg["ask_timeout"]))
+                if self.on_ask:
+                    try:
+                        self.on_ask(req.get("pids") or [])
+                    except Exception as exc:
+                        log("on_ask failed: %s" % exc)
                 reply = {"decision": self.ask(timeout)}
             elif cmd == "readhold":
                 switch, has_release = self.read_hold(float(req.get("timeout", 20)))

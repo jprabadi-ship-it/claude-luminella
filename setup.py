@@ -23,8 +23,8 @@ OPTIONS = {
         "CFBundleName": "Luminella",
         "CFBundleDisplayName": "Luminella",
         "CFBundleIdentifier": "com.miyashita.luminella",
-        "CFBundleVersion": "1.2.1",
-        "CFBundleShortVersionString": "1.2.1",
+        "CFBundleVersion": "1.2.2",
+        "CFBundleShortVersionString": "1.2.2",
         "LSUIElement": True,  # menu bar only: no Dock icon, no menu bar app menu
         # Push-to-talk records from the microphone; macOS requires this string
         # before it will even prompt, and denies silently without it.

@@ -94,7 +94,12 @@ tools/restart.sh        デーモン再起動（CLI版）
 ```sh
 tools/build_app.sh                                  # ad-hoc 署名（既定）
 SIGN_ID="Developer ID Application: ..." tools/build_app.sh
+NO_INSTALL=1 tools/build_app.sh                     # /Applications へ入れない
 ```
+
+ビルドすると **`/Applications` へインストールして起動し直す**。アクセシビリティや
+マイクの許可は利用者が指定したアプリに紐づくため、`dist/` から動かしていると
+「許可したアプリ」と「実際に動いているアプリ」がずれる。
 
 既定は ad-hoc 署名。Apple Development 証明書で署名しても、
 受け取る側の手間は ad-hoc と変わらない（どちらも初回に手動で開く必要がある）のに
@@ -131,6 +136,15 @@ Team ID が食い違い、dyld が
 | 文字起こし中 | `stt` | 青紫 | 点滅 |
 
 色・モードは `~/.claude/luminella/config.json` の `states` で上書きできる。
+
+## 許可待ちのセッションを前面に出す
+
+メニューの「許可待ちで前面に出す」。**既定はオフ**（勝手に前面へ出るのは邪魔になり得る）。
+
+フックは Claude Code のプロセスの中で動くので、親をたどれば呼び出し元のアプリに行き着く。
+ただし「どれが GUI アプリか」の判定には AppKit が要り、フックは標準ライブラリ縛りなので、
+**フックは親 PID の一覧を送り、アプリ側が `NSRunningApplication` で解決する**。
+複数セッションを開いていても、要求を出した側が特定できる。
 
 ## 効果音
 

@@ -51,6 +51,21 @@ ln -s /Applications "$STAGE/Applications"
 hdiutil create -volname "Luminella" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 rm -rf "$STAGE"
 
+echo "==> install"
+# Accessibility and microphone grants are tied to the app the user pointed at,
+# so the copy in /Applications has to be the one that actually runs. Building
+# without installing leaves the granted app and the running app out of step.
+if [ -z "${NO_INSTALL:-}" ]; then
+  pkill -f "Luminella.app/Contents/MacOS/Luminella" 2>/dev/null || true
+  sleep 1
+  rm -rf /Applications/Luminella.app
+  cp -R "$APP" /Applications/Luminella.app
+  open /Applications/Luminella.app
+  echo "installed and launched: /Applications/Luminella.app"
+else
+  echo "skipped (NO_INSTALL set)"
+fi
+
 echo
 echo "app: $APP"
 echo "dmg: $DMG  ($(du -h "$DMG" | cut -f1))"

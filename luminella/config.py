@@ -48,6 +48,10 @@ DEFAULTS = {
         "off":    None,
     },
 
+    # Raise the session's window when it asks for approval. Off by default:
+    # stealing focus is intrusive, and the ring already says something waits.
+    "focus_on_ask": False,
+
     # Which switch approves / rejects a gated tool call.
     "approve_switch": "1",
     "deny_switch": "5",
