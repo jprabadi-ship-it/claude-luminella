@@ -65,7 +65,7 @@ Luminella のフックが追記される。既存のフックには触らず追�
 | デバイスに再接続 | Core を終了させた後などに |
 
 アプリ未起動でも、Claude Code の `SessionStart` フックが
-バンドル ID (`com.miyashita.luminella`) 経由で自動起動する。
+バンドル ID (`com.rabadi.clauminella`) 経由で自動起動する。
 そのため「ログイン時に起動」は用意していない。
 
 ## 構成
