@@ -1,4 +1,4 @@
-# claude-luminella
+# Clauminella
 
 BRAIN MAGIC **Luminella** を Claude Code の物理ステータスランプ兼承認ボタンにする。
 
@@ -35,7 +35,7 @@ Luminella Core / Orbital2 Core を介さず、シリアルポートを直接叩�
 
 ## 導入
 
-`dist/Luminella.dmg` を開き、`Luminella.app` を Applications にドラッグする。
+`dist/Clauminella.dmg` を開き、`Clauminella.app` を Applications にドラッグする。
 起動するとメニューバーに常駐する（Dock には出ない）。
 
 **macOS 26 以降 / Apple Silicon 専用。** 同梱の Python が macOS 26 SDK で
@@ -113,7 +113,7 @@ NO_INSTALL=1 tools/build_app.sh                     # /Applications へ入れな
 またはコマンドで:
 
 ```sh
-xattr -d com.apple.quarantine /Applications/Luminella.app
+xattr -d com.apple.quarantine /Applications/Clauminella.app
 ```
 
 `codesign --deep` は**使えない**。バンドル内の `.so` と同梱 python の
@@ -323,7 +323,7 @@ SW8 が解放をまったく送らず、他のスイッチでも取りこぼし�
 
 GPLv3。詳細は [LICENSE](LICENSE) を参照。
 
-Claude Luminella は株式会社ブレインマジックおよび Anthropic とは関係のない
+Clauminella は株式会社ブレインマジックおよび Anthropic とは関係のない
 独立した製品。Luminella、Orbital2 は株式会社ブレインマジックの商標、
 Claude、Claude Code は Anthropic PBC の商標であり、
 対応する製品を示す目的でのみ使用している。

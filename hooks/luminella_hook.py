@@ -22,7 +22,7 @@ import time
 STATE_DIR = os.path.join(os.path.expanduser("~"), ".claude", "luminella")
 SOCKET_PATH = os.path.join(STATE_DIR, "daemon.sock")
 CONFIG_PATH = os.path.join(STATE_DIR, "config.json")
-BUNDLE_ID = "com.miyashita.luminella"
+BUNDLE_ID = "com.miyashita.clauminella"
 
 DEFAULT_GATED_TOOLS = []
 DEFAULT_ASK_TIMEOUT = 30.0

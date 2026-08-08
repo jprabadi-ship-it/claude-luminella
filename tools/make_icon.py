@@ -13,8 +13,8 @@ import Quartz
 from Quartz import CGColorSpaceCreateDeviceRGB, CGBitmapContextCreate
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ICONSET = os.path.join(ROOT, "build", "Luminella.iconset")
-ICNS = os.path.join(ROOT, "build", "Luminella.icns")
+ICONSET = os.path.join(ROOT, "build", "Clauminella.iconset")
+ICNS = os.path.join(ROOT, "build", "Clauminella.icns")
 
 SIZES = [16, 32, 64, 128, 256, 512, 1024]
 

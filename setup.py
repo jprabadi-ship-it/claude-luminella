@@ -16,15 +16,15 @@ DATA_FILES = [os.path.join(ROOT, "build", "stage", "hook.py")]
 
 OPTIONS = {
     "argv_emulation": False,
-    "iconfile": os.path.join(ROOT, "build", "Luminella.icns"),
+    "iconfile": os.path.join(ROOT, "build", "Clauminella.icns"),
     "packages": ["rumps", "serial", "luminella", "Quartz", "ApplicationServices"],
     "includes": ["serial.tools", "serial.tools.list_ports"],
     "plist": {
-        "CFBundleName": "Luminella",
-        "CFBundleDisplayName": "Luminella",
-        "CFBundleIdentifier": "com.miyashita.luminella",
-        "CFBundleVersion": "1.2.2",
-        "CFBundleShortVersionString": "1.2.2",
+        "CFBundleName": "Clauminella",
+        "CFBundleDisplayName": "Clauminella",
+        "CFBundleIdentifier": "com.miyashita.clauminella",
+        "CFBundleVersion": "1.3.0",
+        "CFBundleShortVersionString": "1.3.0",
         "LSUIElement": True,  # menu bar only: no Dock icon, no menu bar app menu
         # Push-to-talk records from the microphone; macOS requires this string
         # before it will even prompt, and denies silently without it.
@@ -37,12 +37,12 @@ OPTIONS = {
         # binaries will not load on anything older. Declaring 12.0 was simply
         # untrue.
         "LSMinimumSystemVersion": "26.0",
-        "NSHumanReadableCopyright": "Luminella glow ring bridge for Claude Code",
+        "NSHumanReadableCopyright": "Clauminella - glow ring bridge for Claude Code",
     },
 }
 
 setup(
-    name="Luminella",
+    name="Clauminella",
     app=APP,
     data_files=DATA_FILES,
     options={"py2app": OPTIONS},

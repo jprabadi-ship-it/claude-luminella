@@ -1,4 +1,4 @@
-"""Luminella menu bar app.
+"""Clauminella menu bar app.
 
 Hosts the serial daemon in background threads and exposes it through a status
 item, so there is one process that owns the device, renders the ring, and
@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from luminella import config, daemon, hookinstall, icon, ptt
 
-APP_NAME = "Luminella"
+APP_NAME = "Clauminella"
 
 # Fallback glyphs, used only if the drawn icons cannot be produced.
 GLYPH = {
@@ -395,10 +395,10 @@ class LuminellaApp(rumps.App):
             preview = text if len(text) <= 90 else text[:90] + "…"
             self.daemon.set_state("done", revert_to="idle", after=1.2)
             title = "入力しました" if pasted else "クリップボードにコピーしました"
-            rumps.notification("Luminella", title, preview)
+            rumps.notification(APP_NAME, title, preview)
         else:
             self.daemon.set_state("error", revert_to="idle", after=1.5)
-            rumps.notification("Luminella", "プッシュトゥトーク", text)
+            rumps.notification(APP_NAME, "プッシュトゥトーク", text)
 
     @guard
     def assign_ptt(self, _):
