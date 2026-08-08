@@ -552,7 +552,7 @@ class LuminellaApp(rumps.App):
                 alert(
                     APP_NAME,
                     "システム設定 → プライバシーとセキュリティ → アクセシビリティ で\n"
-                    "Luminella を許可してください。\n\n"
+                    "%s を許可してください。\n\n" % APP_NAME +
                     "許可するまでは、クリップボードにのみ入ります。",
                 )
         self.cfg["paste_to_focused"] = enabled
