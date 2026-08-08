@@ -243,7 +243,9 @@ class LuminellaApp(rumps.App):
             held = [d for d, a in (self.cfg.get("stick_actions") or {}).items()
                     if (a or {}).get("type") == "ptt"]
             where = {"down": "手前", "up": "奥", "left": "左", "right": "右"}
-            if held:
+            if len(held) >= 4:
+                self.item_ptt.title = "プッシュトゥトーク: スティックを倒す（どの向きでも）"
+            elif held:
                 self.item_ptt.title = "プッシュトゥトーク: スティックを%sに倒す" % where.get(held[0], held[0])
             else:
                 self.item_ptt.title = "プッシュトゥトーク: 未割り当て"

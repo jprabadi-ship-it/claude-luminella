@@ -81,15 +81,16 @@ DEFAULTS = {
     # What each stick direction does. "ptt" holds while deflected; the others
     # fire once on the way out. Four directions only -- the diagonals are hard
     # to hit on purpose and easy to hit by accident.
-    # Push-to-talk only. Interrupt lived on "up" at first, but releasing a
-    # sprung stick overshoots past centre far enough to read as "down", which
-    # started a recording every time you stopped something. A switch has no
-    # neighbouring direction to fall into.
+    # Every direction records. Once interrupt moved to a switch the stick had
+    # only one job left, and giving it to all four directions means there is
+    # nothing to aim at: push the stick any way at all and talk. It also
+    # removes the overshoot problem by construction -- the direction the
+    # spring throws it through on the way back does the same thing.
     "stick_actions": {
         "down":  {"type": "ptt"},
-        "up":    None,
-        "left":  None,
-        "right": None,
+        "up":    {"type": "ptt"},
+        "left":  {"type": "ptt"},
+        "right": {"type": "ptt"},
     },
 
     # Actions bound to switches, by number. approve_switch and deny_switch are
