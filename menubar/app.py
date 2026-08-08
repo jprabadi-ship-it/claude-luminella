@@ -36,6 +36,14 @@ GLYPH = {
     "stt": "🟣",
 }
 
+# Marks for the session list. Plain characters rather than the ring icons,
+# which only exist as files sized for the status bar.
+MARK = {
+    "ask": "\N{LARGE ORANGE CIRCLE}", "notify": "\N{LARGE PURPLE CIRCLE}",
+    "error": "\N{LARGE RED CIRCLE}", "done": "\N{LARGE GREEN CIRCLE}",
+    "busy": "\N{LARGE BLUE CIRCLE}", "idle": "\N{MEDIUM WHITE CIRCLE}",
+}
+
 STATE_LABEL = {
     "idle": "待機中",
     "busy": "実行中",
@@ -104,6 +112,7 @@ class LuminellaApp(rumps.App):
             daemon.log("icon rendering failed\n%s" % traceback.format_exc())
             self.icons = {}
         self.shown_state = None
+        self._logged_icon = False
         self._probed_at = 0.0
         self._hooks_installed = False
         self._stt_available = False
@@ -111,6 +120,9 @@ class LuminellaApp(rumps.App):
         self.stopping = False
 
         self.item_state = rumps.MenuItem("状態: 起動中…")
+        # Fixed slots: a rumps menu is built once, so rows are re-titled
+        # rather than added and removed as sessions come and go.
+        self.session_slots = [rumps.MenuItem("セッション%d" % (i + 1)) for i in range(6)]
         self.item_device = rumps.MenuItem("デバイス: 確認中…")
         self.item_hooks = rumps.MenuItem("Claude Code フック: 確認中…")
         self.item_ptt = rumps.MenuItem("プッシュトゥトーク: 確認中…")
@@ -126,6 +138,7 @@ class LuminellaApp(rumps.App):
 
         self.daemon.on_state_change = self.play_state_sound
         self.daemon.on_ask = self.focus_asking_session
+        self.daemon.on_resolve_pid = self.is_gui_app
 
         self.daemon.ptt = ptt.PushToTalk(
             self.cfg, on_state=self._ptt_state, on_result=self._ptt_result, log=daemon.log
@@ -134,6 +147,8 @@ class LuminellaApp(rumps.App):
         self.menu = [
             self.item_state,
             self.item_device,
+            None,
+        ] + self.session_slots + [
             None,
             rumps.MenuItem("許可ボタンを割り当て…", callback=self.assign_approve),
             rumps.MenuItem("拒否ボタンを割り当て…", callback=self.assign_deny),
@@ -157,6 +172,9 @@ class LuminellaApp(rumps.App):
             None,
             rumps.MenuItem("終了", callback=self.quit_app),
         ]
+
+        for slot in self.session_slots:
+            slot._menuitem.setHidden_(True)
 
         threading.Thread(target=self._run_daemon, daemon=True).start()
 
@@ -193,6 +211,18 @@ class LuminellaApp(rumps.App):
             "デバイス: 接続済み" if connected else "デバイス: 未接続（Core が掴んでいませんか）"
         )
 
+        rows = self.daemon.session_list()
+        padded = rows + [None] * len(self.session_slots)
+        for slot, row in zip(self.session_slots, padded):
+            if row is None:
+                slot._menuitem.setHidden_(True)
+                continue
+            slot._menuitem.setHidden_(False)
+            label, session_state, _ = row
+            slot.title = "%s %s \u2014 %s" % (
+                MARK.get(session_state, "\N{MEDIUM WHITE CIRCLE}"), label,
+                STATE_LABEL.get(session_state, session_state))
+
         # These read settings.json and probe the filesystem, so they are polled
         # every few seconds rather than on every 0.4s tick.
         now = time.time()
@@ -204,11 +234,21 @@ class LuminellaApp(rumps.App):
             f"Claude Code フック: {'導入済み' if self._hooks_installed else '未導入'}"
         )
 
-        switch = self.cfg.get("ptt_switch")
+        # Say how it is actually triggered. This line went on naming a switch
+        # long after the stick took the job over, which read as a bug in the
+        # app when it was only a stale label.
         if not self._stt_available:
             self.item_ptt.title = "プッシュトゥトーク: エンジン未検出"
-        elif switch:
-            self.item_ptt.title = f"プッシュトゥトーク: SW{switch} を長押し"
+        elif self.cfg.get("ptt_mode") == "stick":
+            held = [d for d, a in (self.cfg.get("stick_actions") or {}).items()
+                    if (a or {}).get("type") == "ptt"]
+            where = {"down": "手前", "up": "奥", "left": "左", "right": "右"}
+            if held:
+                self.item_ptt.title = "プッシュトゥトーク: スティックを%sに倒す" % where.get(held[0], held[0])
+            else:
+                self.item_ptt.title = "プッシュトゥトーク: 未割り当て"
+        elif self.cfg.get("ptt_switch"):
+            self.item_ptt.title = "プッシュトゥトーク: SW%s を長押し" % self.cfg["ptt_switch"]
         else:
             self.item_ptt.title = "プッシュトゥトーク: 未設定"
 
@@ -228,6 +268,14 @@ class LuminellaApp(rumps.App):
             # before the first icon is drawn -- and it never takes the name
             # back out. Clear it so the ring stands alone.
             self._nsapp.nsstatusitem.setTitle_("")
+            if not self._logged_icon:
+                self._logged_icon = True
+                item = self._nsapp.nsstatusitem
+                image = item.image()
+                daemon.log("statusitem: image=%s menu=%s items=%s" % (
+                    tuple(image.size()) if image else None,
+                    item.menu() is not None,
+                    item.menu().numberOfItems() if item.menu() else 0))
         except Exception:
             daemon.log("icon update failed\n%s" % traceback.format_exc())
             self.title = GLYPH.get(state, "⚫")
@@ -278,6 +326,14 @@ class LuminellaApp(rumps.App):
             f.write("\n")
 
     # ---- focus -----------------------------------------------------------
+
+    def is_gui_app(self, pid):
+        """Whether a pid belongs to a regular application, not a helper."""
+        try:
+            app = NSRunningApplication.runningApplicationWithProcessIdentifier_(int(pid))
+        except Exception:
+            return False
+        return app is not None and app.activationPolicy() == 0
 
     def focus_asking_session(self, pids):
         """Raise the application whose session is waiting for approval.

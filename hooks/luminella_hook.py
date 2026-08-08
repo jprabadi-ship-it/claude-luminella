@@ -89,11 +89,21 @@ def ensure_running(wait=5.0):
     return False
 
 
-def set_state(state, revert_to=None, after=None):
+SESSION = {}
+
+
+def set_state(state, revert_to=None, after=None, tool=None, pids=None):
     payload = {"cmd": "state", "state": state}
+    # Which session this is, and a name a person can read. Sent on every
+    # change so the app can hold a register of what is running where.
+    payload.update(SESSION)
     if after is not None:
         payload["after"] = after
         payload["revert_to"] = revert_to or "idle"
+    if tool:
+        payload["tool"] = tool
+    if pids:
+        payload["pids"] = pids
     return request(payload, timeout=2.0)
 
 
@@ -168,10 +178,17 @@ def main():
 
     event = payload.get("hook_event_name", "")
     cfg = load_config()
+    if payload.get("session_id"):
+        SESSION["session_id"] = payload["session_id"]
+    if payload.get("cwd"):
+        SESSION["cwd"] = payload["cwd"]
 
     if event == "SessionStart":
         ensure_running()
-        set_state("idle")
+        # Walking the process tree costs a handful of ps calls, so it happens
+        # once per session rather than on every event. The app keeps the
+        # result and aims interrupts and canned prompts at that window.
+        set_state("idle", pids=ancestor_pids())
         return 0
 
     if not is_running() and not ensure_running(wait=2.0):
@@ -203,10 +220,10 @@ def main():
             else:
                 set_state("busy")
             return 0
-        set_state("busy")
+        set_state("busy", tool=tool)
 
     elif event == "PostToolUse":
-        set_state("busy")
+        set_state("busy", tool=payload.get("tool_name"))
 
     elif event == "Notification":
         set_state("notify")

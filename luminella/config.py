@@ -74,6 +74,37 @@ DEFAULTS = {
     "ptt_mode": "stick",
     "ptt_stick_on": 45,
     "ptt_stick_off": 20,
+    # Seconds to ignore the stick after a gesture ends, so the spring's
+    # overshoot past centre is not read as the opposite direction.
+    "stick_settle": 0.5,
+
+    # What each stick direction does. "ptt" holds while deflected; the others
+    # fire once on the way out. Four directions only -- the diagonals are hard
+    # to hit on purpose and easy to hit by accident.
+    # Push-to-talk only. Interrupt lived on "up" at first, but releasing a
+    # sprung stick overshoots past centre far enough to read as "down", which
+    # started a recording every time you stopped something. A switch has no
+    # neighbouring direction to fall into.
+    "stick_actions": {
+        "down":  {"type": "ptt"},
+        "up":    None,
+        "left":  None,
+        "right": None,
+    },
+
+    # Actions bound to switches, by number. approve_switch and deny_switch are
+    # handled separately and should not appear here. Empty by default: a
+    # prompt that fires from a mis-press sends an instruction you did not mean.
+    "switch_actions": {},
+
+    # Ring colour while a particular tool runs. All breathe, so motion still
+    # means "working" and only the hue says which tool. Kept to two: more
+    # colours is more to remember for no extra decision.
+    "tool_states": {
+        "Bash":  {"color": [0, 220, 140], "mode": "breathe"},
+        "Write": {"color": [190, 120, 255], "mode": "breathe"},
+        "Edit":  {"color": [190, 120, 255], "mode": "breathe"},
+    },
     # AVFoundation audio input index (see the menu for the device list).
     "mic_index": 0,
     # Paste the transcript into whatever has focus, not just the clipboard.
@@ -81,6 +112,18 @@ DEFAULTS = {
     # needs none.
     "paste_to_focused": True,
     "stt_language": "ja",
+    # Sentences whisper invents when handed silence. Matched whole, after
+    # trimming punctuation, so a real utterance containing one of these
+    # phrases still gets through.
+    "hallucinations": [
+        "ご視聴ありがとうございました",
+        "ご視聴ありがとうございます",
+        "おやすみなさい",
+        "チャンネル登録をお願いします",
+        "最後までご視聴いただきありがとうございます",
+        "Thank you for watching",
+        "Thanks for watching",
+    ],
     # Trimming silence keeps whisper from inventing text to fill it, but the
     # filter can cut speech too; off until it is tuned.
     "trim_silence": False,
@@ -102,7 +145,8 @@ def load():
     except (OSError, ValueError):
         return cfg
     for key, value in user.items():
-        if key in ("states", "sounds") and isinstance(value, dict):
+        if key in ("states", "sounds", "stick_actions", "switch_actions",
+                   "tool_states") and isinstance(value, dict):
             cfg[key].update(value)
         else:
             cfg[key] = value

@@ -20,7 +20,11 @@ Inbound (';'-terminated, 2-byte command tag + fixed payload)
     JS  4 bytes    'X' <x> 'Y' <y>   stick position, 0x80 = centre
     RE  2 bytes    rotary encoder    (Orbital2 only; Luminella has no RE)
     SW  3 bytes    switch state
-    RC  3 bytes    ring capacitance / flat ring touch
+    RC  3 bytes    unknown; never observed from a Luminella. The table is
+                   shared across the Orbital2 family, and RE is listed here
+                   too even though DeviceType.ts states the Luminella has no
+                   rotary encoder. Parsed only so an RC frame would not
+                   desynchronise the stream.
 """
 
 import time

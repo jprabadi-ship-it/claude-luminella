@@ -20,8 +20,9 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Ignore taps too short to be speech, and stop runaway recordings.
-MIN_SECONDS = 0.4
+# Ignore taps too short to be speech, and stop runaway recordings. Under a
+# second is almost never a sentence; it is a stick knocked by accident.
+MIN_SECONDS = 0.8
 MAX_SECONDS = 180
 
 
@@ -535,6 +536,18 @@ class PushToTalk:
             self._cleanup(path, outdir)
             self.on_result(False, "聞き取れませんでした")
             return
+
+        # Whisper does not return nothing for silence -- it returns a plausible
+        # stock sentence, the same handful every time. Letting one through is
+        # worse than dropping a real utterance, because it arrives looking like
+        # something that was actually said.
+        stripped = text.strip().strip("。.!?！？ 　")
+        for phrase in self.cfg.get("hallucinations") or ():
+            if stripped == phrase.strip().strip("。.!?！？ 　"):
+                self.log("ptt: discarded stock phrase %r" % text)
+                self._cleanup(path, outdir)
+                self.on_result(False, "音声が聞き取れませんでした")
+                return
 
         try:
             set_clipboard(text)

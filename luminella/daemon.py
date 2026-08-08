@@ -25,7 +25,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from luminella import config, protocol
+from luminella import actions, config, protocol
 
 
 def log(msg):
@@ -35,6 +35,15 @@ def log(msg):
             f.write(line)
     except OSError:
         pass
+
+
+# Which state wins when several sessions are in different ones. A session
+# waiting on you outranks everything; nothing else stops work from happening.
+STATE_RANK = {"ask": 0, "notify": 1, "error": 2, "done": 3, "busy": 4, "idle": 5, "off": 6}
+
+# Sessions that stop reporting are dropped rather than left waiting forever --
+# a crashed session should not pin the ring on "busy".
+SESSION_TTL = 1800.0
 
 
 class Daemon:
@@ -53,8 +62,19 @@ class Daemon:
         self.ptt = None
         self.on_state_change = None
         self.on_ask = None
+        self.on_resolve_pid = None
         self.stick_engaged = False
+        self.stick_direction = None
+        self.stick_ready_at = 0.0
         self.last_stick = None
+        self.session_pid = None
+        self.busy_tool = None
+        # session_id -> {cwd, state, tool, seen, revert_at, revert_to, pid}
+        self.sessions = {}
+        # Push-to-talk feedback is about the device in your hand, not about any
+        # session, so it is held separately and shown ahead of them.
+        self.local_state = None
+        self.local_revert_at = None
 
     # ---- serial ---------------------------------------------------------
 
@@ -113,22 +133,64 @@ class Daemon:
                 number, _, value = text.partition("=")
                 self.dispatch(number, value)
 
+    @staticmethod
+    def direction_of(x, y):
+        """Which way the stick is pushed: up, down, left or right.
+
+        Four sectors rather than eight -- the device reports eight, but on a
+        stick this small the diagonals are hard to hit deliberately and easy
+        to hit by accident.
+        """
+        if abs(x) >= abs(y):
+            return "right" if x > 0 else "left"
+        # Measured on the device: pushing away from you gives positive y.
+        # (The opposite was assumed at first, which swapped up and down.)
+        return "up" if y > 0 else "down"
+
     def on_stick(self, x, y):
-        """Drive push-to-talk from stick deflection, with hysteresis."""
-        if not self.ptt or self.cfg.get("ptt_mode") != "stick":
+        """Route stick deflection to whatever that direction is bound to.
+
+        Direction is latched on the way out and only released once the stick
+        comes back to centre, so a hold stays with the direction it started
+        in even if the angle drifts.
+        """
+        if self.cfg.get("ptt_mode") != "stick":
             return
         magnitude = max(abs(x), abs(y))
         if magnitude != self.last_stick:
             self.last_stick = magnitude
-            log("stick %d (x=%d y=%d)" % (magnitude, x, y))
         on_at = int(self.cfg.get("ptt_stick_on", 45))
         off_at = int(self.cfg.get("ptt_stick_off", 20))
+        bindings = self.cfg.get("stick_actions") or {}
+
         if not self.stick_engaged and magnitude >= on_at:
+            # A spring-loaded stick overshoots on the way back: let go of "up"
+            # and it can swing past centre far enough to look like a
+            # deliberate "down". Ignore anything that arrives too soon after
+            # the previous gesture ended.
+            if time.time() < self.stick_ready_at:
+                return
             self.stick_engaged = True
-            self.ptt.start()
+            self.stick_direction = self.direction_of(x, y)
+            action = bindings.get(self.stick_direction) or {}
+            log("stick %s (x=%d y=%d) -> %s" % (
+                self.stick_direction, x, y, action.get("type") or "なし"))
+            if action.get("type") == "ptt":
+                if self.ptt:
+                    self.ptt.start()
+            elif action.get("type"):
+                threading.Thread(
+                    target=actions.perform,
+                    args=(action, self.session_pid, log),
+                    daemon=True,
+                ).start()
         elif self.stick_engaged and magnitude <= off_at:
+            held = self.stick_direction
             self.stick_engaged = False
-            self.ptt.stop()
+            self.stick_direction = None
+            self.stick_ready_at = time.time() + float(self.cfg.get("stick_settle", 0.5))
+            if (bindings.get(held) or {}).get("type") == "ptt" and self.ptt:
+                self.ptt.stop()
 
     def dispatch(self, switch, value):
         with self.listeners_lock:
@@ -138,8 +200,17 @@ class Daemon:
 
         # Push-to-talk is driven by the device, not by a hook, so it is
         # handled here rather than over the socket.
+        if value == "1":
+            bound = (self.cfg.get("switch_actions") or {}).get(str(switch))
+            if bound and bound.get("type"):
+                log("sw %s -> %s" % (switch, bound.get("type")))
+                threading.Thread(
+                    target=actions.perform,
+                    args=(bound, self.session_pid, log),
+                    daemon=True,
+                ).start()
+
         ptt_switch = str(self.cfg.get("ptt_switch") or "")
-        log("sw %s=%s (ptt=%r)" % (switch, value, ptt_switch))
         if self.ptt and ptt_switch and str(switch) == ptt_switch:
             if value == "1":
                 # The device sometimes drops the release edge, so a press while
@@ -156,20 +227,78 @@ class Daemon:
     # ---- animation ------------------------------------------------------
 
     def current(self):
+        """The state the ring should show right now."""
         with self.state_lock:
-            if self.revert_at and time.time() >= self.revert_at:
-                self.state = self.revert_to
-                self.revert_at = None
-            return self.state
+            now = time.time()
+
+            if self.local_revert_at and now >= self.local_revert_at:
+                self.local_state = None
+                self.local_revert_at = None
+            if self.local_state:
+                self.busy_tool = None
+                return self.local_state
+
+            best, best_rank, best_tool = None, 99, None
+            for sid in list(self.sessions):
+                s = self.sessions[sid]
+                if now - s.get("seen", 0) > SESSION_TTL:
+                    del self.sessions[sid]
+                    continue
+                if s.get("revert_at") and now >= s["revert_at"]:
+                    s["state"] = s.get("revert_to", "idle")
+                    s.pop("revert_at", None)
+                rank = STATE_RANK.get(s["state"], 50)
+                if rank < best_rank:
+                    best, best_rank, best_tool = s["state"], rank, s.get("tool")
+            self.busy_tool = best_tool if best == "busy" else None
+            return best or "idle"
 
     def set_state(self, state, revert_to=None, after=None):
+        """Show something about the device itself, ahead of any session.
+
+        "idle" clears the override rather than pinning the ring, so the
+        sessions become visible again once push-to-talk is done.
+        """
         with self.state_lock:
-            self.state = state
+            if state == "idle" and after is None:
+                self.local_state = None
+                self.local_revert_at = None
+                return
+            self.local_state = state
+            self.local_revert_at = time.time() + after if after else None
+
+    def set_session_state(self, session_id, state, cwd=None, tool=None,
+                          revert_to=None, after=None, pid=None):
+        with self.state_lock:
+            if state == "off":
+                self.sessions.pop(session_id, None)
+                return
+            s = self.sessions.setdefault(session_id, {})
+            s["state"] = state
+            s["seen"] = time.time()
+            s["tool"] = tool
+            if cwd:
+                s["cwd"] = cwd
+            if pid:
+                s["pid"] = pid
             if after:
-                self.revert_at = time.time() + after
-                self.revert_to = revert_to or "idle"
+                s["revert_at"] = time.time() + after
+                s["revert_to"] = revert_to or "idle"
             else:
-                self.revert_at = None
+                s.pop("revert_at", None)
+
+    def session_list(self):
+        """[(label, state, session_id)] newest first, for display."""
+        now = time.time()
+        rows = []
+        with self.state_lock:
+            for sid, s in self.sessions.items():
+                if now - s.get("seen", 0) > SESSION_TTL:
+                    continue
+                label = os.path.basename(s.get("cwd") or "") or sid[:8]
+                rows.append((label, s.get("state", "idle"), sid, s.get("seen", 0)))
+        rows.sort(key=lambda r: (STATE_RANK.get(r[1], 50), -r[3]))
+        return [(a, b, c) for a, b, c, _ in rows]
 
     def animate_loop(self):
         period = 1.0 / max(1, self.cfg["fps"])
@@ -184,6 +313,8 @@ class Daemon:
                     except Exception as exc:
                         log("state-change handler failed: %s" % exc)
             spec = self.cfg["states"].get(name, self.cfg["states"]["idle"])
+            if name == "busy" and self.busy_tool:
+                spec = (self.cfg.get("tool_states") or {}).get(self.busy_tool, spec)
             r, g, b = spec["color"]
             mode = spec.get("mode", "solid")
             t = time.time()
@@ -309,9 +440,24 @@ class Daemon:
             if cmd == "ping":
                 reply = {"ok": True, "device": bool(self.ser)}
             elif cmd == "state":
+                pids = req.get("pids")
+                if pids:
+                    for pid in pids:
+                        if self.on_resolve_pid and self.on_resolve_pid(pid):
+                            self.session_pid = pid
+                            break
                 name = req.get("state", "idle")
                 after = req.get("after")
-                self.set_state(name, revert_to=req.get("revert_to", "idle"), after=after)
+                session_id = req.get("session_id")
+                if session_id:
+                    self.set_session_state(
+                        session_id, name,
+                        cwd=req.get("cwd"), tool=req.get("tool"),
+                        revert_to=req.get("revert_to", "idle"), after=after,
+                        pid=self.session_pid,
+                    )
+                else:
+                    self.set_state(name, revert_to=req.get("revert_to", "idle"), after=after)
                 reply = {"ok": True, "state": name}
             elif cmd == "ask":
                 timeout = float(req.get("timeout", self.cfg["ask_timeout"]))
