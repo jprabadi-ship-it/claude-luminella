@@ -139,6 +139,24 @@
       The transcriber is 180MB and its speech model is over a gigabyte — out of proportion to a 22MB app, so it is called as an external command instead of being bundled.
       <strong>The only time anything is downloaded</strong> is when that model is first fetched; nothing is sent after that.
     </p>
+
+    <h3 style="margin-top:32px">About the microphone</h3>
+    <p class="lede">Plug a USB microphone in directly. The difference in start-up time is large enough to feel.</p>
+    <table>
+      <tbody><tr><th>Connection</th><th>Time until recording starts</th></tr>
+      <tr><td><strong>USB microphone, direct</strong></td><td><strong>about 0.5s</strong></td></tr>
+      <tr><td>iPhone (Continuity)</td><td>1.8 to 8.6s</td></tr>
+    </tbody></table>
+    <p class="note" style="margin-top:20px">
+      That is the gap between pushing the stick and the microphone actually delivering audio. <strong>Nothing before that is captured</strong> — it does not arrive as silence, it does not exist.
+      A sleeping iPhone takes several seconds over Continuity, which swallows the start of a sentence.
+      Waiting for the ring to go steady avoids it, but waiting several seconds every time is not practical.
+    </p>
+    <p class="note">
+      Development used a <a href="https://www.amazon.co.jp/dp/B09Y1M3BZJ?linkCode=ll1&tag=assoc2004-22&linkId=d7e40c6e37de74496da5dd35eb2b2c83&language=ja_JP&ref_=as_li_ss_tl">FIFINE AmpliGame</a>: 0.5s to start, and it caught proper nouns the other inputs missed.
+      Nothing depends on that particular model — <strong>any microphone you can plug in over USB should be just as quick</strong>.
+    </p>
+    <p class="note">As an Amazon Associate, the author earns from qualifying purchases.</p>
     <p class="note" style="margin-top:20px">
       <strong>It cannot run alongside Luminella Core.</strong>
       Both compete for the same serial port, so only one of them works at a time.
