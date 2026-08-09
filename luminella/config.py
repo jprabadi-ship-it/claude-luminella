@@ -57,6 +57,9 @@ DEFAULTS = {
     # Waiting for input fires far more often than waiting for approval, so it
     # gets its own switch rather than riding on the same one.
     "notify_on_idle": True,
+    # Put the ring out while every display is asleep. The light exists to be
+    # glanced at; with the screens off there is nobody at the desk to glance.
+    "off_when_display_sleeps": True,
 
     # Which switch approves / rejects a gated tool call.
     "approve_switch": "1",

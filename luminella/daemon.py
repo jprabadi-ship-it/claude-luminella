@@ -76,6 +76,9 @@ class Daemon:
         # session, so it is held separately and shown ahead of them.
         self.local_state = None
         self.local_revert_at = None
+        # Nobody is reading a status light in a dark room. Set while the
+        # displays are asleep; the ring goes out and stays out.
+        self.display_off = False
 
     # ---- serial ---------------------------------------------------------
 
@@ -305,6 +308,10 @@ class Daemon:
         period = 1.0 / max(1, self.cfg["fps"])
         previous = None
         while self.running:
+            if self.display_off and self.cfg.get("off_when_display_sleeps", True):
+                self.write_rgb((0, 0, 0))
+                time.sleep(period)
+                continue
             name = self.current()
             if name != previous:
                 previous = name

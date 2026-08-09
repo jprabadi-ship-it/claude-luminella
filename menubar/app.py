@@ -14,7 +14,7 @@ import time
 import traceback
 
 import rumps
-from AppKit import NSApplication, NSRunningApplication
+from AppKit import NSApplication, NSRunningApplication, NSWorkspace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -144,6 +144,8 @@ class LuminellaApp(rumps.App):
         self.item_notify.state = 1 if self.cfg.get("notify_on_ask") else 0
         self.item_notify_idle = rumps.MenuItem("入力待ちを通知", callback=self.toggle_notify_idle)
         self.item_notify_idle.state = 1 if self.cfg.get("notify_on_idle") else 0
+        self.item_display = rumps.MenuItem("画面が消えたら消灯", callback=self.toggle_display_off)
+        self.item_display.state = 1 if self.cfg.get("off_when_display_sleeps") else 0
 
         self.mics = []
         threading.Thread(target=self._load_mics, daemon=True).start()
@@ -179,6 +181,7 @@ class LuminellaApp(rumps.App):
             self.item_focus,
             self.item_notify,
             self.item_notify_idle,
+            self.item_display,
             self.item_sound,
             None,
             rumps.MenuItem("設定ファイルを開く", callback=self.open_config),
@@ -190,6 +193,8 @@ class LuminellaApp(rumps.App):
 
         for slot in self.session_slots:
             slot._menuitem.setHidden_(True)
+
+        self._watch_display_sleep()
 
         threading.Thread(target=self._run_daemon, daemon=True).start()
 
@@ -407,6 +412,47 @@ class LuminellaApp(rumps.App):
         with open(config.CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(stored, f, indent=2, ensure_ascii=False)
             f.write("\n")
+
+    # ---- display sleep ---------------------------------------------------
+
+    def _watch_display_sleep(self):
+        """Follow the screens, so the ring is not the only thing lit at night.
+
+        Notifications rather than polling: the two events say exactly when the
+        displays go and come back, and CGDisplayIsAsleep covers the case where
+        the app starts up while they are already off.
+        """
+        try:
+            from Quartz import CGDisplayIsAsleep, CGMainDisplayID
+
+            self.daemon.display_off = bool(CGDisplayIsAsleep(CGMainDisplayID()))
+        except Exception:
+            pass
+        try:
+            centre = NSWorkspace.sharedWorkspace().notificationCenter()
+            centre.addObserver_selector_name_object_(
+                self, "screensDidSleep:", "NSWorkspaceScreensDidSleepNotification", None)
+            centre.addObserver_selector_name_object_(
+                self, "screensDidWake:", "NSWorkspaceScreensDidWakeNotification", None)
+        except Exception:
+            daemon.log("display sleep watch failed\n%s" % traceback.format_exc())
+
+    def screensDidSleep_(self, note):
+        daemon.log("display: asleep")
+        self.daemon.display_off = True
+
+    def screensDidWake_(self, note):
+        daemon.log("display: awake")
+        self.daemon.display_off = False
+        self.daemon.last_rgb = None  # force a redraw at the current state
+
+    @guard
+    def toggle_display_off(self, _):
+        enabled = not self.cfg.get("off_when_display_sleeps")
+        self.cfg["off_when_display_sleeps"] = enabled
+        self.daemon.cfg["off_when_display_sleeps"] = enabled
+        self.item_display.state = 1 if enabled else 0
+        self._save_config({"off_when_display_sleeps": enabled})
 
     # ---- focus -----------------------------------------------------------
 
