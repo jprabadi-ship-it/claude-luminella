@@ -214,6 +214,11 @@ class Daemon:
                     daemon=True,
                 ).start()
 
+        # ptt_switch only means anything in switch mode. In stick mode a
+        # leftover ptt_switch would start a recording on top of whatever
+        # action the switch is actually bound to.
+        if self.cfg.get("ptt_mode") != "switch":
+            return
         ptt_switch = str(self.cfg.get("ptt_switch") or "")
         if self.ptt and ptt_switch and str(switch) == ptt_switch:
             if value == "1":
