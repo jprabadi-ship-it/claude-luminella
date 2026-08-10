@@ -134,18 +134,7 @@ class LuminellaApp(rumps.App):
         self.item_device = rumps.MenuItem("デバイス: 確認中…")
         self.item_hooks = rumps.MenuItem("Claude Code フック: 確認中…")
         self.item_ptt = rumps.MenuItem("プッシュトゥトーク: 確認中…")
-        self.item_sound = rumps.MenuItem("効果音", callback=self.toggle_sound)
-        self.item_sound.state = 1 if self.cfg.get("sound") else 0
-        self.item_paste = rumps.MenuItem("入力欄に直接入力", callback=self.toggle_paste)
-        self.item_paste.state = 1 if self.cfg.get("paste_to_focused") else 0
-        self.item_focus = rumps.MenuItem("許可待ちで前面に出す", callback=self.toggle_focus)
-        self.item_focus.state = 1 if self.cfg.get("focus_on_ask") else 0
-        self.item_notify = rumps.MenuItem("許可待ちを通知", callback=self.toggle_notify)
-        self.item_notify.state = 1 if self.cfg.get("notify_on_ask") else 0
-        self.item_notify_idle = rumps.MenuItem("入力待ちを通知", callback=self.toggle_notify_idle)
-        self.item_notify_idle.state = 1 if self.cfg.get("notify_on_idle") else 0
-        self.item_display = rumps.MenuItem("画面が消えたら消灯", callback=self.toggle_display_off)
-        self.item_display.state = 1 if self.cfg.get("off_when_display_sleeps") else 0
+        self.settings = None
 
         self.mics = []
         threading.Thread(target=self._load_mics, daemon=True).start()
@@ -165,24 +154,12 @@ class LuminellaApp(rumps.App):
             None,
         ] + self.session_slots + [
             None,
-            rumps.MenuItem("許可ボタンを割り当て…", callback=self.assign_approve),
-            rumps.MenuItem("拒否ボタンを割り当て…", callback=self.assign_deny),
-            None,
+            self.item_ptt,
             self.item_hooks,
+            None,
+            rumps.MenuItem("設定…", callback=self.open_settings),
             rumps.MenuItem("フックを導入", callback=self.install_hooks),
             rumps.MenuItem("フックを解除", callback=self.uninstall_hooks),
-            None,
-            self.item_ptt,
-            rumps.MenuItem("押して話すボタンを割り当て…", callback=self.assign_ptt),
-            rumps.MenuItem("プッシュトゥトークを無効化", callback=self.disable_ptt),
-            rumps.MenuItem("マイクを選ぶ…", callback=self.choose_mic),
-            self.item_paste,
-            None,
-            self.item_focus,
-            self.item_notify,
-            self.item_notify_idle,
-            self.item_display,
-            self.item_sound,
             None,
             rumps.MenuItem("設定ファイルを開く", callback=self.open_config),
             rumps.MenuItem("ログを開く", callback=self.open_log),
@@ -350,7 +327,7 @@ class LuminellaApp(rumps.App):
             self.icon = path
             # rumps loads the file at its pixel size; the image is drawn at 2x
             # so it has to be told the point size or it fills the whole bar.
-            self._icon_nsimage.setSize_((icon.PT, icon.PT))
+            self._icon_nsimage.setSize_((icon.PT_W, icon.PT))
             self._nsapp.setStatusBarIcon()
             # rumps writes the app name into the status item whenever both the
             # title and the image are empty, which is the case for the moment
@@ -369,37 +346,14 @@ class LuminellaApp(rumps.App):
             daemon.log("icon update failed\n%s" % traceback.format_exc())
             self.title = GLYPH.get(state, "⚫")
 
-    # ---- button assignment ---------------------------------------------
-
-    def _assign(self, key, label, colour):
-        if not self.daemon.running:
-            alert(APP_NAME, "デバイスに接続していません。")
-            return
-        previous = self.daemon.current()
-        self.daemon.set_state(colour)
-
-        def worker():
-            switch = self.daemon.read_switch(20)
-            self.daemon.set_state(previous)
-            if switch is None:
-                self.notify(f"{label}の割り当て", "タイムアウトしました")
-                return
-            self.cfg[key] = switch
-            self.daemon.cfg[key] = switch
-            self._save_config({key: switch})
-            self.notify(f"{label}の割り当て", f"SW{switch} に設定しました")
-
-        threading.Thread(target=worker, daemon=True).start()
-        self.notify(f"{label}にしたいボタンを押してください", "20秒以内 / リングの色が変わります"
-        )
+    # ---- settings window -------------------------------------------------
 
     @guard
-    def assign_approve(self, _):
-        self._assign("approve_switch", "許可ボタン", "done")
-
-    @guard
-    def assign_deny(self, _):
-        self._assign("deny_switch", "拒否ボタン", "error")
+    def open_settings(self, _):
+        from luminella import settingsui
+        if self.settings is None:
+            self.settings = settingsui.SettingsController.alloc().initWithApp_(self)
+        self.settings.show()
 
     def _save_config(self, updates):
         os.makedirs(config.STATE_DIR, exist_ok=True)
@@ -445,14 +399,6 @@ class LuminellaApp(rumps.App):
         daemon.log("display: awake")
         self.daemon.display_off = False
         self.daemon.last_rgb = None  # force a redraw at the current state
-
-    @guard
-    def toggle_display_off(self, _):
-        enabled = not self.cfg.get("off_when_display_sleeps")
-        self.cfg["off_when_display_sleeps"] = enabled
-        self.daemon.cfg["off_when_display_sleeps"] = enabled
-        self.item_display.state = 1 if enabled else 0
-        self._save_config({"off_when_display_sleeps": enabled})
 
     # ---- focus -----------------------------------------------------------
 
@@ -521,30 +467,6 @@ class LuminellaApp(rumps.App):
             return
         daemon.log("focus: no GUI app found in %r" % (pids[:6],))
 
-    @guard
-    def toggle_notify_idle(self, _):
-        enabled = not self.cfg.get("notify_on_idle")
-        self.cfg["notify_on_idle"] = enabled
-        self.daemon.cfg["notify_on_idle"] = enabled
-        self.item_notify_idle.state = 1 if enabled else 0
-        self._save_config({"notify_on_idle": enabled})
-
-    @guard
-    def toggle_notify(self, _):
-        enabled = not self.cfg.get("notify_on_ask")
-        self.cfg["notify_on_ask"] = enabled
-        self.daemon.cfg["notify_on_ask"] = enabled
-        self.item_notify.state = 1 if enabled else 0
-        self._save_config({"notify_on_ask": enabled})
-
-    @guard
-    def toggle_focus(self, _):
-        enabled = not self.cfg.get("focus_on_ask")
-        self.cfg["focus_on_ask"] = enabled
-        self.daemon.cfg["focus_on_ask"] = enabled
-        self.item_focus.state = 1 if enabled else 0
-        self._save_config({"focus_on_ask": enabled})
-
     # ---- sound -----------------------------------------------------------
 
     SOUND_DIR = "/System/Library/Sounds"
@@ -580,42 +502,6 @@ class LuminellaApp(rumps.App):
 
         threading.Thread(target=worker, daemon=True).start()
 
-    @guard
-    def toggle_paste(self, _):
-        enabled = not self.cfg.get("paste_to_focused")
-        if enabled:
-            front()
-            if not rumps.alert(
-                APP_NAME,
-                "文字起こしした内容を、入力中のアプリへ直接貼り付けます。\n\n"
-                "そのためにキー操作（Cmd+V）を送るので、macOS の操作許可が必要です。\n"
-                "初回に確認が出ます。\n\n"
-                "オフのままなら権限は一切不要で、クリップボードにだけ入ります。",
-                ok="有効にする", cancel="やめる",
-            ):
-                return
-            if not ptt.accessibility_trusted(prompt=True):
-                alert(
-                    APP_NAME,
-                    "システム設定 → プライバシーとセキュリティ → アクセシビリティ で\n"
-                    "%s を許可してください。\n\n" % APP_NAME +
-                    "許可するまでは、クリップボードにのみ入ります。",
-                )
-        self.cfg["paste_to_focused"] = enabled
-        self.daemon.cfg["paste_to_focused"] = enabled
-        self.item_paste.state = 1 if enabled else 0
-        self._save_config({"paste_to_focused": enabled})
-
-    @guard
-    def toggle_sound(self, _):
-        enabled = not self.cfg.get("sound")
-        self.cfg["sound"] = enabled
-        self.daemon.cfg["sound"] = enabled
-        self.item_sound.state = 1 if enabled else 0
-        self._save_config({"sound": enabled})
-        if enabled:
-            self.play_state_sound("done")
-
     # ---- push-to-talk ---------------------------------------------------
 
     def _load_mics(self):
@@ -636,89 +522,6 @@ class LuminellaApp(rumps.App):
         else:
             self.daemon.set_state("error", revert_to="idle", after=1.5)
             self.notify("プッシュトゥトーク", text)
-
-    @guard
-    def assign_ptt(self, _):
-        if not self.daemon.ptt.available():
-            alert(
-                APP_NAME,
-                "文字起こしエンジンが見つかりません。\n\n"
-                "次のいずれかを入れてください:\n"
-                "  pip install mlx-whisper   （高速・推奨）\n"
-                "  pip install openai-whisper",
-            )
-            return
-
-        def worker():
-            switch, has_release = self.daemon.read_hold(20)
-            self.daemon.set_state(previous)
-            if switch is None:
-                self.notify("押して話すボタン", "タイムアウトしました")
-                return
-            if not has_release:
-                # At least one switch on the device reports the press only, and
-                # push-to-talk stops on the release edge.
-                self.notify("SW%s は使えません" % switch,
-                    "このボタンは「離した」信号を送りません。別のボタンを選んでください",
-                )
-                return
-            self.cfg["ptt_switch"] = switch
-            self.daemon.cfg["ptt_switch"] = switch
-            self._save_config({"ptt_switch": switch})
-            self.notify("押して話すボタン", "SW%s に設定しました" % switch)
-
-        if not self.daemon.running:
-            alert(APP_NAME, "デバイスに接続していません。")
-            return
-        previous = self.daemon.current()
-        self.daemon.set_state("rec")
-        threading.Thread(target=worker, daemon=True).start()
-        self.notify("押して話すボタンを押して、離してください", "20秒以内 / リングがピンクに光ります"
-        )
-
-    @guard
-    def disable_ptt(self, _):
-        self.cfg["ptt_switch"] = None
-        self.daemon.cfg["ptt_switch"] = None
-        self._save_config({"ptt_switch": None})
-        self.notify("プッシュトゥトーク", "無効にしました")
-
-    @guard
-    def choose_mic(self, _):
-        devices = self.mics or ptt.list_input_devices()
-        self.mics = devices
-        if not devices:
-            alert(APP_NAME, "マイクが見つかりませんでした。")
-            return
-        current = int(self.cfg.get("mic_index", 0))
-        listing = "\n".join(
-            "%s%d: %s" % ("→ " if i == current else "   ", i, n) for i, n in devices
-        )
-        window = rumps.Window(
-            title=APP_NAME,
-            message="使うマイクの番号を入力してください。\n\n" + listing,
-            default_text=str(current),
-            ok="設定",
-            cancel="キャンセル",
-            dimensions=(80, 22),
-        )
-        front()
-        response = window.run()
-        if not response.clicked:
-            return
-        try:
-            index = int(response.text.strip())
-        except ValueError:
-            alert(APP_NAME, "番号を入力してください。")
-            return
-        if index not in [i for i, _ in devices]:
-            alert(APP_NAME, "その番号のマイクはありません。")
-            return
-        self.cfg["mic_index"] = index
-        self.daemon.cfg["mic_index"] = index
-        self._save_config({"mic_index": index})
-        name = dict(devices)[index]
-        self.notify("マイク", "%d: %s に設定しました" % (index, name))
 
     # ---- hooks ----------------------------------------------------------
 
