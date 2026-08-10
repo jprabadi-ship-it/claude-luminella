@@ -21,8 +21,10 @@ from AppKit import (
     NSPNGFileType,
 )
 
-PX = 36          # rendered at 2x for retina
-PT = 18          # displayed size in points
+PX_W = 72        # rendered at 2x for retina; twice as wide as tall so the
+PX_H = 36        # glow has somewhere to spill and the item stands out
+PT_W = 36        # displayed size in points
+PT = 18
 RADIUS = 12.0
 STROKE = 3.6
 DOT = 3.4
@@ -39,8 +41,8 @@ def _visible(rgb):
     peak = max(r, g, b)
     if peak == 0:
         return (0.45, 0.45, 0.45)          # "off" reads as grey, not nothing
-    if peak < 200:
-        scale = 200.0 / peak
+    if peak < 235:
+        scale = 235.0 / peak
         r, g, b = (min(255, c * scale) for c in (r, g, b))
     return (r / 255.0, g / 255.0, b / 255.0)
 
@@ -48,32 +50,41 @@ def _visible(rgb):
 def render(rgb, path, gap=True):
     """Draw one ring icon to a PNG file."""
     rep = NSBitmapImageRep.alloc().initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel_(
-        None, PX, PX, 8, 4, True, False, NSCalibratedRGBColorSpace, 0, 0
+        None, PX_W, PX_H, 8, 4, True, False, NSCalibratedRGBColorSpace, 0, 0
     )
     context = NSGraphicsContext.graphicsContextWithBitmapImageRep_(rep)
     NSGraphicsContext.saveGraphicsState()
     NSGraphicsContext.setCurrentContext_(context)
 
     r, g, b = _visible(rgb)
+    cx, cy = PX_W / 2.0, PX_H / 2.0
+
+    # Background: the state's own colour, pale and translucent, filling the
+    # whole item as a rounded pill. A tinted field this size registers in the
+    # corner of the eye where a thin ring alone did not.
+    NSColor.colorWithCalibratedRed_green_blue_alpha_(r, g, b, 0.28).set()
+    NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
+        ((0, 0), (PX_W, PX_H)), cy, cy
+    ).fill()
+
     NSColor.colorWithCalibratedRed_green_blue_alpha_(r, g, b, 1.0).set()
 
-    centre = PX / 2.0
     ring = NSBezierPath.bezierPath()
     ring.setLineWidth_(STROKE)
     ring.setLineCapStyle_(1)  # round
     if gap:
         # Same 300-degree sweep as the app icon, so the two read as one family.
         ring.appendBezierPathWithArcWithCenter_radius_startAngle_endAngle_(
-            (centre, centre), RADIUS, 125.0, 65.0
+            (cx, cy), RADIUS, 125.0, 65.0
         )
     else:
         ring.appendBezierPathWithArcWithCenter_radius_startAngle_endAngle_(
-            (centre, centre), RADIUS, 0.0, 360.0
+            (cx, cy), RADIUS, 0.0, 360.0
         )
     ring.stroke()
 
     dot = NSBezierPath.bezierPathWithOvalInRect_(
-        ((centre - DOT, centre - DOT), (DOT * 2, DOT * 2))
+        ((cx - DOT, cy - DOT), (DOT * 2, DOT * 2))
     )
     dot.fill()
 
