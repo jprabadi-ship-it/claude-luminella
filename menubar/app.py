@@ -130,7 +130,13 @@ class LuminellaApp(rumps.App):
         self.item_state = rumps.MenuItem("状態: 起動中…")
         # Fixed slots: a rumps menu is built once, so rows are re-titled
         # rather than added and removed as sessions come and go.
-        self.session_slots = [rumps.MenuItem("セッション%d" % (i + 1)) for i in range(6)]
+        self.session_slots = [
+            rumps.MenuItem("セッション%d" % (i + 1), callback=self.reset_session)
+            for i in range(6)
+        ]
+        # session_id behind each visible slot, refreshed with the titles, so a
+        # click knows which session it is aimed at.
+        self.slot_sids = [None] * 6
         self.item_device = rumps.MenuItem("デバイス: 確認中…")
         self.item_hooks = rumps.MenuItem("Claude Code フック: 確認中…")
         self.item_ptt = rumps.MenuItem("プッシュトゥトーク: 確認中…")
@@ -212,12 +218,14 @@ class LuminellaApp(rumps.App):
 
         rows = self.daemon.session_list()
         padded = rows + [None] * len(self.session_slots)
-        for slot, row in zip(self.session_slots, padded):
+        for i, (slot, row) in enumerate(zip(self.session_slots, padded)):
             if row is None:
                 slot._menuitem.setHidden_(True)
+                self.slot_sids[i] = None
                 continue
             slot._menuitem.setHidden_(False)
-            label, session_state, _ = row
+            label, session_state, sid = row
+            self.slot_sids[i] = sid
             slot.title = "%s %s \u2014 %s" % (
                 MARK.get(session_state, "\N{MEDIUM WHITE CIRCLE}"), label,
                 STATE_LABEL.get(session_state, session_state))
@@ -345,6 +353,26 @@ class LuminellaApp(rumps.App):
         except Exception:
             daemon.log("icon update failed\n%s" % traceback.format_exc())
             self.title = GLYPH.get(state, "⚫")
+
+    @guard
+    def reset_session(self, sender):
+        """Put a clicked session row back to 待機中.
+
+        A session can leave the ring stuck on 許可待ち when its prompt was
+        answered in a way no hook reports. The state is only a display, so
+        letting the person overrule it is safe: the next hook event from that
+        session sets it right again either way.
+        """
+        try:
+            index = self.session_slots.index(sender)
+        except ValueError:
+            return
+        sid = self.slot_sids[index]
+        if not sid:
+            return
+        label = sender.title.split(" ", 1)[-1].split(" — ")[0]
+        self.daemon.set_session_state(sid, "idle")
+        self.notify("表示をリセット", "%s を待機中に戻しました" % label)
 
     # ---- settings window -------------------------------------------------
 
