@@ -9,6 +9,8 @@ waiting for a physical button press, which hops back via
 performSelectorOnMainThread.
 """
 
+import os
+import subprocess
 import threading
 
 import objc
@@ -52,6 +54,21 @@ WIN_W, WIN_H = 600, 710
 PAD = 18
 ROW_H = 26
 GAP = 8
+
+# States that can chime, with the words the rest of the app uses for them.
+SOUND_STATES = [
+    ("ask", "許可待ち"),
+    ("notify", "入力待ち・通知"),
+    ("done", "完了 / 許可"),
+    ("error", "エラー / 拒否"),
+    ("busy", "実行開始"),
+    ("idle", "待機に戻ったとき"),
+    ("rec", "録音開始"),
+    ("stt", "文字起こし開始"),
+    ("warmup", "マイク準備"),
+]
+SOUND_DIR = "/System/Library/Sounds"
+SOUND_NONE = "なし"
 
 # Diagram colours per role. System colours so they follow light/dark mode.
 ROLE_COLOUR = {
@@ -177,6 +194,8 @@ class SettingsController(NSObject):
         self.mic_popup = None
         self.mic_indices = []
         self.diagram = None
+        self.sound_popup = {}  # state name -> NSPopUpButton
+        self.sound_names = []
         self.check = {}        # config key -> NSButton
         self._loading = False
         return self
@@ -206,8 +225,12 @@ class SettingsController(NSObject):
         buttons = NSTabViewItem.alloc().initWithIdentifier_("buttons")
         buttons.setLabel_("ボタン")
         buttons.setView_(self._build_buttons())
+        sounds = NSTabViewItem.alloc().initWithIdentifier_("sounds")
+        sounds.setLabel_("音")
+        sounds.setView_(self._build_sounds())
         tabs.addTabViewItem_(general)
         tabs.addTabViewItem_(buttons)
+        tabs.addTabViewItem_(sounds)
         self.window.contentView().addSubview_(tabs)
 
     def _build_general(self):
@@ -220,7 +243,6 @@ class SettingsController(NSObject):
             ("notify_on_idle", "入力待ちを通知"),
             ("focus_on_ask", "許可待ちでそのセッションを前面に出す"),
             ("off_when_display_sleeps", "画面が消えたらリングを消灯"),
-            ("sound", "効果音"),
             ("paste_to_focused", "文字起こしを入力欄に直接入力（アクセシビリティ権限が必要）"),
         ]
         for key, title in toggles:
@@ -301,6 +323,58 @@ class SettingsController(NSObject):
             NSMakeRect(PAD, y - 34, width - 2 * PAD, 34), small=True))
         return view
 
+    def _build_sounds(self):
+        view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, WIN_W - 2 * PAD, WIN_H - 2 * PAD))
+        height = view.frame().size.height
+        y = height - 40
+
+        box = _checkbox("効果音を鳴らす", NSMakeRect(PAD, y, 300, ROW_H),
+                        bool(self.app.cfg.get("sound")), self, "toggleChanged:")
+        box.setIdentifier_("sound")
+        self.check["sound"] = box
+        view.addSubview_(box)
+        y -= ROW_H + 14
+
+        try:
+            self.sound_names = sorted(
+                name[:-5] for name in os.listdir(SOUND_DIR) if name.endswith(".aiff"))
+        except OSError:
+            self.sound_names = []
+
+        for state, label in SOUND_STATES:
+            view.addSubview_(_label(label, NSMakeRect(PAD, y + 4, 170, 20)))
+            popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
+                NSMakeRect(PAD + 176, y, 180, ROW_H), False)
+            popup.addItemWithTitle_(SOUND_NONE)
+            for name in self.sound_names:
+                popup.addItemWithTitle_(name)
+            popup.setIdentifier_(state)
+            popup.setTarget_(self)
+            popup.setAction_("soundChanged:")
+            self.sound_popup[state] = popup
+            view.addSubview_(popup)
+            y -= ROW_H + GAP
+
+        view.addSubview_(_label(
+            "選ぶとその場で試聴できます。実行開始・待機は毎ターン鳴るので、既定では「なし」です。",
+            NSMakeRect(PAD, y - 16, WIN_W - 4 * PAD, 20), small=True))
+        return view
+
+    def soundChanged_(self, sender):
+        if self._loading:
+            return
+        state = str(sender.identifier())
+        title = sender.titleOfSelectedItem()
+        name = None if title == SOUND_NONE else title
+        sounds = dict(self.app.cfg.get("sounds") or {})
+        sounds[state] = name
+        self.app.cfg["sounds"] = sounds
+        self.app.daemon.cfg["sounds"] = sounds
+        self.app._save_config({"sounds": sounds})
+        if name:
+            path = os.path.join(SOUND_DIR, name + ".aiff")
+            subprocess.Popen(["/usr/bin/afplay", path])
+
     # ---- state <-> widgets ----------------------------------------------
 
     def _load(self):
@@ -336,6 +410,10 @@ class SettingsController(NSObject):
                     NSControlStateValueOn if submit else NSControlStateValueOff)
                 self.row_mark[sw].setStringValue_("")
                 self._sync_row_enabled(sw)
+
+            sounds = cfg.get("sounds") or {}
+            for state, popup in self.sound_popup.items():
+                popup.selectItemWithTitle_(sounds.get(state) or SOUND_NONE)
 
             self._load_mics()
             self._update_diagram()
