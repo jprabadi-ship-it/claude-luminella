@@ -1,8 +1,18 @@
 #!/bin/bash
 # Build Clauminella.app and Clauminella.dmg.
 #
-#   tools/build_app.sh                 ad-hoc signature
-#   SIGN_ID="Apple Development: ..." tools/build_app.sh
+#   tools/build_app.sh                       ad-hoc signature, local install
+#   SIGN_ID="Apple Development: ..." …       sign with a named identity
+#   NO_INSTALL=1 …                           build only
+#   NOTARIZE=1 …                             Developer ID + notarize + staple
+#
+# NOTARIZE=1 needs two things that only the account holder can create:
+#   * a "Developer ID Application" certificate (Xcode > Settings > Accounts >
+#     Manage Certificates, or the developer portal)
+#   * notarytool credentials saved under a keychain profile, created with
+#       xcrun notarytool store-credentials clauminella \
+#         --apple-id <id> --team-id <team> --password <app-specific password>
+#     Override the profile name with NOTARY_PROFILE.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -11,7 +21,28 @@ cd "$ROOT"
 PY="$ROOT/.venv/bin/python"
 APP="$ROOT/dist/Clauminella.app"
 DMG="$ROOT/dist/Clauminella.dmg"
-SIGN_ID="${SIGN_ID:-}"
+ENTITLEMENTS="$ROOT/build/entitlements.plist"
+NOTARY_PROFILE="${NOTARY_PROFILE:-clauminella}"
+
+find_identity() {
+  # Trailing "|| true": with pipefail a grep that matches nothing fails the
+  # whole pipeline, and under set -e the assignment that calls this would exit
+  # the script before it could explain why.
+  security find-identity -v -p codesigning 2>/dev/null |
+    grep -o "\"$1[^\"]*\"" | head -1 | tr -d '"' || true
+}
+
+DEVELOPER_ID="$(find_identity 'Developer ID Application')"
+
+# Notarisation is only possible with a Developer ID certificate, and only that
+# certificate produces a build that opens on someone else's Mac.
+if [ -n "${NOTARIZE:-}" ] && [ -z "$DEVELOPER_ID" ]; then
+  echo "NOTARIZE=1 but no 'Developer ID Application' certificate is installed." >&2
+  echo "Create one in Xcode > Settings > Accounts > Manage Certificates." >&2
+  exit 1
+fi
+
+SIGN_ID="${SIGN_ID:-${DEVELOPER_ID:-}}"
 
 echo "==> icon"
 "$PY" tools/make_icon.py
@@ -29,21 +60,36 @@ sign_bundle() {
   # files signed by different teams, and dyld then refuses to map them
   # ("different Team IDs"). Sign every Mach-O individually, inner-most first,
   # with one identity, then seal the bundle.
+  #
+  # A Developer ID signature additionally needs the hardened runtime and a
+  # secure timestamp, or notarisation rejects it. The entitlements go on the
+  # bundle only; the inner Mach-Os are signed without them.
   local bundle="$1" id="$2"
+  local opts=()
+  case "$id" in
+    "Developer ID Application"*) opts=(--options runtime --timestamp) ;;
+  esac
+
   find "$bundle" -type f \( -name '*.so' -o -name '*.dylib' \) -print0 |
-    xargs -0 -n1 codesign --force --sign "$id" 2>/dev/null || true
+    xargs -0 -n1 codesign --force "${opts[@]}" --sign "$id" 2>/dev/null || true
   find "$bundle/Contents/MacOS" -type f -perm +111 -print0 |
-    xargs -0 -n1 codesign --force --sign "$id" 2>/dev/null || true
+    xargs -0 -n1 codesign --force "${opts[@]}" --sign "$id" 2>/dev/null || true
   find "$bundle/Contents/Frameworks" -type d -name '*.framework' -print0 2>/dev/null |
-    xargs -0 -n1 -I{} codesign --force --sign "$id" {} 2>/dev/null || true
-  codesign --force --sign "$id" "$bundle"
+    xargs -0 -n1 -I{} codesign --force "${opts[@]}" --sign "$id" {} 2>/dev/null || true
+
+  if [ ${#opts[@]} -gt 0 ]; then
+    codesign --force "${opts[@]}" --entitlements "$ENTITLEMENTS" --sign "$id" "$bundle"
+  else
+    codesign --force --sign "$id" "$bundle"
+  fi
 }
 
 echo "==> sign"
-# --deep is not usable here: it leaves the bundled interpreter and the .so
-# files signed by different teams, and dyld then refuses to map them
-# ("different Team IDs"). Sign every Mach-O individually, inner-most first,
-# with one identity, then seal the bundle.
+if [ -n "$SIGN_ID" ]; then
+  echo "    identity: $SIGN_ID"
+else
+  echo "    identity: ad-hoc (this build will not open on another Mac)"
+fi
 sign_bundle "$APP" "${SIGN_ID:--}"
 codesign --verify --deep --verbose=2 "$APP" 2>&1 | tail -2
 
@@ -55,14 +101,28 @@ ln -s /Applications "$STAGE/Applications"
 hdiutil create -volname "Clauminella" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 rm -rf "$STAGE"
 
+if [ -n "${NOTARIZE:-}" ]; then
+  echo "==> notarize"
+  # The dmg carries its own signature, and it is the dmg that gets stapled --
+  # the ticket has to travel with the file people actually download.
+  codesign --force --timestamp --sign "$DEVELOPER_ID" "$DMG"
+  xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
+  xcrun stapler staple "$DMG"
+  xcrun stapler validate "$DMG"
+  echo "    notarized and stapled"
+fi
+
 echo "==> install"
 # The dmg is signed ad-hoc so it carries no certificate expiry, but TCC keys
 # permissions to the signing identity: an ad-hoc app looks like a different
 # app after every build, and the microphone and accessibility grants fall off.
 # So the copy that gets installed is re-signed with a stable local identity.
 if [ -z "${NO_INSTALL:-}" ]; then
-  LOCAL_ID="${LOCAL_SIGN_ID:-$(security find-identity -v -p codesigning 2>/dev/null |
-    grep -o '"Apple Development: [^"]*"' | head -1 | tr -d '"')}"
+  # Prefer Developer ID once it exists, so the copy being tested here is signed
+  # the same way as the copy people download. Switching identity changes the
+  # bundle's designated requirement, so macOS asks for microphone and
+  # accessibility again -- once, on the first build after the switch.
+  LOCAL_ID="${LOCAL_SIGN_ID:-${DEVELOPER_ID:-$(find_identity 'Apple Development')}}"
 
   # Match on the bundle directory alone. Spelling out the executable name here
   # is how a stale process survived three builds after the rename: the pattern
