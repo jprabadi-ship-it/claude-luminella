@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Notarization requires the hardened runtime, which blocks by default
+       several things a bundled Python interpreter needs. -->
+
+  <!-- py2app loads dozens of .so extension modules and, for transcription,
+       the mlx and whisper dylibs. Library validation refuses any of those
+       that are not signed by this team. -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+
+  <!-- CPython writes and executes bytecode pages. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+
+  <!-- Push-to-talk records through ffmpeg's avfoundation input. -->
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
+
+  <!-- Raising the session that is asking for approval, and pasting the
+       transcript, both drive other applications. -->
+  <key>com.apple.security.automation.apple-events</key>
+  <true/>
+</dict>
+</plist>

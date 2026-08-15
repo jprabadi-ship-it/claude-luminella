@@ -21,7 +21,7 @@ cd "$ROOT"
 PY="$ROOT/.venv/bin/python"
 APP="$ROOT/dist/Clauminella.app"
 DMG="$ROOT/dist/Clauminella.dmg"
-ENTITLEMENTS="$ROOT/build/entitlements.plist"
+ENTITLEMENTS="$ROOT/tools/entitlements.plist"
 NOTARY_PROFILE="${NOTARY_PROFILE:-clauminella}"
 
 find_identity() {
