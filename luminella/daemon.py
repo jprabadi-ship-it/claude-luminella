@@ -18,6 +18,7 @@ port. Only one of them can run at a time.
 import json
 import math
 import os
+import select
 import socket
 import sys
 import threading
@@ -396,7 +397,26 @@ class Daemon:
             with self.listeners_lock:
                 self.listeners = [(b, e) for b, e in self.listeners if b is not box]
 
-    def ask(self, timeout):
+    @staticmethod
+    def _peer_gone(conn):
+        """Whether the hook that asked has exited.
+
+        Answering the prompt on screen resolves the permission without any
+        button, and Claude Code then drops the hook process. Nothing else tells
+        us that; without this the ring would go on blinking for the rest of
+        ask_timeout over a question that is already settled.
+        """
+        if conn is None:
+            return False
+        try:
+            readable, _, _ = select.select([conn], [], [], 0)
+            if not readable:
+                return False
+            return conn.recv(1, socket.MSG_PEEK) == b""
+        except OSError:
+            return True
+
+    def ask(self, timeout, conn=None):
         box, event = [], threading.Event()
         with self.listeners_lock:
             self.listeners.append((box, event))
@@ -409,6 +429,9 @@ class Daemon:
         decision = "timeout"
         try:
             while time.time() < deadline:
+                if self._peer_gone(conn):
+                    decision = "gone"
+                    break
                 if not event.wait(min(0.25, max(0.01, deadline - time.time()))):
                     continue
                 event.clear()
@@ -433,6 +456,8 @@ class Daemon:
         elif decision == "deny":
             self.set_state("error", revert_to=previous, after=0.6)
         else:
+            if decision == "gone":
+                log("ask: answered on screen (hook exited)")
             self.set_state(previous)
         return decision
 
@@ -486,7 +511,7 @@ class Daemon:
                         self.on_ask(req)
                     except Exception as exc:
                         log("on_ask failed: %s" % exc)
-                reply = {"decision": self.ask(timeout)}
+                reply = {"decision": self.ask(timeout, conn)}
             elif cmd == "readhold":
                 switch, has_release = self.read_hold(float(req.get("timeout", 20)))
                 reply = {"switch": switch, "has_release": has_release}
@@ -500,6 +525,12 @@ class Daemon:
                 reply = {"ok": False, "error": f"unknown cmd {cmd!r}"}
 
             conn.sendall((json.dumps(reply) + "\n").encode("utf-8"))
+        except BrokenPipeError:
+            # Expected whenever a question was answered on screen: the hook is
+            # already gone, and ask() has said so in the line above. Logging it
+            # again as an error only sends the next person debugging this down
+            # the wrong path.
+            pass
         except Exception as exc:
             log(f"handler error: {exc}")
             try:
