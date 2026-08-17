@@ -179,6 +179,15 @@ class LuminellaApp(rumps.App):
 
         self._watch_display_sleep()
 
+        # Keep the deployed hook in step with the one in this bundle, so an
+        # update to the hook takes effect on launch rather than waiting for
+        # someone to click 導入 again.
+        try:
+            if hookinstall.refresh_hook_script(resource("hook.py")):
+                daemon.log("hook script updated from the bundle")
+        except Exception:
+            daemon.log("hook refresh failed\n%s" % traceback.format_exc())
+
         threading.Thread(target=self._run_daemon, daemon=True).start()
 
     # ---- daemon lifecycle ----------------------------------------------

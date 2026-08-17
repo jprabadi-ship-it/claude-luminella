@@ -40,6 +40,16 @@ def log(msg):
 
 # Which state wins when several sessions are in different ones. A session
 # waiting on you outranks everything; nothing else stops work from happening.
+# Hook events that can only fire after a permission question is settled. When
+# one arrives for a session that is still being asked about, the question was
+# answered somewhere the device cannot see -- the on-screen prompt, or another
+# PermissionRequest hook such as a remote approver -- and the ring should stop.
+# PreToolUse is deliberately absent: it runs just before the question.
+POST_DECISION_EVENTS = frozenset({
+    "PostToolUse", "Stop", "SubagentStop", "SessionEnd",
+    "Notification", "UserPromptSubmit",
+})
+
 STATE_RANK = {"ask": 0, "notify": 1, "error": 2, "done": 3, "busy": 4, "idle": 5, "off": 6}
 
 # Sessions that stop reporting are dropped rather than left waiting forever --
@@ -78,6 +88,9 @@ class Daemon:
         self.local_state = None
         self.local_revert_at = None
         self.ask_depth = 0          # questions waiting on a button right now
+        # session_id -> Event, set when that session reports an event that can
+        # only happen once its permission question has been settled.
+        self.ask_waiters = {}
         # Nobody is reading a status light in a dark room. Set while the
         # displays are asleep; the ring goes out and stays out.
         self.display_off = False
@@ -278,6 +291,15 @@ class Daemon:
             self.local_state = state
             self.local_revert_at = time.time() + after if after else None
 
+    def settle_ask(self, session_id, event):
+        """Release a pending question once its session reports moving past it."""
+        if not session_id or event not in POST_DECISION_EVENTS:
+            return
+        with self.state_lock:
+            waiter = self.ask_waiters.get(session_id)
+        if waiter is not None:
+            waiter.set()
+
     def set_session_state(self, session_id, state, cwd=None, tool=None,
                           revert_to=None, after=None, pid=None):
         with self.state_lock:
@@ -417,7 +439,7 @@ class Daemon:
         except OSError:
             return True
 
-    def ask(self, timeout, conn=None):
+    def ask(self, timeout, conn=None, session_id=None):
         box, event = [], threading.Event()
         with self.listeners_lock:
             self.listeners.append((box, event))
@@ -426,8 +448,11 @@ class Daemon:
         # before this one". Two sessions can ask at once, and the second one
         # used to record the first one's orange as what to restore -- which it
         # then restored, with no expiry, leaving the ring blinking for good.
+        settled = threading.Event()
         with self.state_lock:
             self.ask_depth += 1
+            if session_id:
+                self.ask_waiters[session_id] = settled
         self.set_state("ask")
         approve = str(self.cfg["approve_switch"])
         deny = str(self.cfg["deny_switch"])
@@ -437,6 +462,13 @@ class Daemon:
             while time.time() < deadline:
                 if self._peer_gone(conn):
                     decision = "gone"
+                    break
+                if settled.is_set():
+                    # The session moved on, so the question was answered
+                    # somewhere else -- on screen, or by a remote approver
+                    # running as a second PermissionRequest hook. That hook
+                    # is not ours to kill, so this is the only signal.
+                    decision = "elsewhere"
                     break
                 if not event.wait(min(0.25, max(0.01, deadline - time.time()))):
                     continue
@@ -460,9 +492,13 @@ class Daemon:
         with self.state_lock:
             self.ask_depth = max(0, self.ask_depth - 1)
             others_waiting = self.ask_depth > 0
+            if session_id and self.ask_waiters.get(session_id) is settled:
+                del self.ask_waiters[session_id]
 
         if decision == "gone":
             log("ask: answered on screen (hook exited)")
+        elif decision == "elsewhere":
+            log("ask: settled elsewhere; the session has moved on")
 
         if others_waiting:
             # Someone else is still waiting; keep the ring on their question.
@@ -506,6 +542,7 @@ class Daemon:
                 after = req.get("after")
                 session_id = req.get("session_id")
                 if session_id:
+                    self.settle_ask(session_id, req.get("event"))
                     self.set_session_state(
                         session_id, name,
                         cwd=req.get("cwd"), tool=req.get("tool"),
@@ -529,7 +566,7 @@ class Daemon:
                         self.on_ask(req)
                     except Exception as exc:
                         log("on_ask failed: %s" % exc)
-                reply = {"decision": self.ask(timeout, conn)}
+                reply = {"decision": self.ask(timeout, conn, req.get("session_id"))}
             elif cmd == "readhold":
                 switch, has_release = self.read_hold(float(req.get("timeout", 20)))
                 reply = {"switch": switch, "has_release": has_release}

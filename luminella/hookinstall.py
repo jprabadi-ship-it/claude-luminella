@@ -6,6 +6,7 @@ path, so other tools' hooks are never touched. A timestamped backup is written
 before the first change.
 """
 
+import filecmp
 import json
 import os
 import shutil
@@ -36,6 +37,23 @@ def install_hook_script(source):
         shutil.copyfile(source, HOOK_PATH)
     os.chmod(HOOK_PATH, 0o755)
     return HOOK_PATH
+
+
+def refresh_hook_script(source):
+    """Re-copy the hook if the bundled one differs from the deployed one.
+
+    The installed copy used to change only when someone clicked 導入 again, so
+    every improvement to the hook sat unused until they thought to do that.
+    The copy inside the bundle is the authoritative one; this keeps the two in
+    step on launch. Returns True when it replaced anything.
+    """
+    try:
+        if os.path.exists(HOOK_PATH) and filecmp.cmp(source, HOOK_PATH, shallow=False):
+            return False
+        install_hook_script(source)
+        return True
+    except OSError:
+        return False
 
 
 def _load_settings():

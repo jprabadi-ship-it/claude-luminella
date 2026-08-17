@@ -90,6 +90,9 @@ def ensure_running(wait=5.0):
 
 
 SESSION = {}
+# Which hook event is being handled. Sent with every state change so the app
+# can tell an event that can only follow an approval from one that precedes it.
+EVENT = {}
 
 
 def set_state(state, revert_to=None, after=None, tool=None, pids=None):
@@ -97,6 +100,7 @@ def set_state(state, revert_to=None, after=None, tool=None, pids=None):
     # Which session this is, and a name a person can read. Sent on every
     # change so the app can hold a register of what is running where.
     payload.update(SESSION)
+    payload.update(EVENT)
     if after is not None:
         payload["after"] = after
         payload["revert_to"] = revert_to or "idle"
@@ -178,6 +182,7 @@ def main():
         return 0
 
     event = payload.get("hook_event_name", "")
+    EVENT["event"] = event
     cfg = load_config()
     if payload.get("session_id"):
         SESSION["session_id"] = payload["session_id"]
