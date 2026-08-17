@@ -9,9 +9,18 @@
 # NOTARIZE=1 needs two things that only the account holder can create:
 #   * a "Developer ID Application" certificate (Xcode > Settings > Accounts >
 #     Manage Certificates, or the developer portal)
-#   * notarytool credentials saved under a keychain profile, created with
-#       xcrun notarytool store-credentials clauminella \
-#         --apple-id <id> --team-id <team> --password <app-specific password>
+#   * credentials for the notary service, by either route:
+#
+#     App Store Connect API key (preferred -- it is just files, and does not
+#     depend on a keychain item that a second notarytool cannot see). Put this
+#     in ~/.claude/luminella/notary.env, outside the repository:
+#         NOTARY_KEY=$HOME/private/AuthKey_XXXXXXXXXX.p8
+#         NOTARY_KEY_ID=XXXXXXXXXX
+#         NOTARY_ISSUER=00000000-0000-0000-0000-000000000000
+#
+#     Or a saved notarytool profile, used when NOTARY_KEY is unset:
+#         xcrun notarytool store-credentials clauminella \
+#           --apple-id <id> --team-id <team> --password <app-specific password>
 #     Override the profile name with NOTARY_PROFILE.
 set -euo pipefail
 
@@ -43,6 +52,41 @@ if [ -n "${NOTARIZE:-}" ] && [ -z "$DEVELOPER_ID" ]; then
 fi
 
 SIGN_ID="${SIGN_ID:-${DEVELOPER_ID:-}}"
+
+if [ -n "${NOTARIZE:-}" ]; then
+  NOTARY_ENV="$HOME/.claude/luminella/notary.env"
+  # shellcheck disable=SC1090
+  [ -f "$NOTARY_ENV" ] && . "$NOTARY_ENV"
+
+  if [ -n "${NOTARY_KEY:-}" ]; then
+    if [ ! -f "$NOTARY_KEY" ]; then
+      echo "NOTARY_KEY points at $NOTARY_KEY, which does not exist." >&2
+      exit 1
+    fi
+    NOTARY_AUTH=(--key "$NOTARY_KEY" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER")
+  else
+    NOTARY_AUTH=(--keychain-profile "$NOTARY_PROFILE")
+  fi
+
+  # Ask the notary service something harmless before building anything. The
+  # credentials failing is otherwise discovered after a three minute build,
+  # and the build gets thrown away.
+  echo "==> notary credentials"
+  if ! xcrun notarytool history "${NOTARY_AUTH[@]}" --limit 1 >/dev/null 2>&1; then
+    echo "The notary service rejected these credentials." >&2
+    if [ -n "${NOTARY_KEY:-}" ]; then
+      echo "Check NOTARY_KEY / NOTARY_KEY_ID / NOTARY_ISSUER in $NOTARY_ENV." >&2
+    else
+      echo "No usable profile named '$NOTARY_PROFILE'. Note there are several" >&2
+      echo "notarytool binaries on this Mac (Xcode, Xcode-beta, CommandLineTools)" >&2
+      echo "and a profile saved by one is not always visible to another." >&2
+      echo "An App Store Connect API key avoids that -- see the notes at the" >&2
+      echo "top of this script." >&2
+    fi
+    exit 1
+  fi
+  echo "    ok"
+fi
 
 echo "==> icon"
 "$PY" tools/make_icon.py
@@ -106,7 +150,7 @@ if [ -n "${NOTARIZE:-}" ]; then
   # The dmg carries its own signature, and it is the dmg that gets stapled --
   # the ticket has to travel with the file people actually download.
   codesign --force --timestamp --sign "$DEVELOPER_ID" "$DMG"
-  xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
+  xcrun notarytool submit "$DMG" "${NOTARY_AUTH[@]}" --wait
   xcrun stapler staple "$DMG"
   xcrun stapler validate "$DMG"
   echo "    notarized and stapled"
