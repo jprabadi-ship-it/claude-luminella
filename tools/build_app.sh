@@ -72,7 +72,7 @@ if [ -n "${NOTARIZE:-}" ]; then
   # credentials failing is otherwise discovered after a three minute build,
   # and the build gets thrown away.
   echo "==> notary credentials"
-  if ! xcrun notarytool history "${NOTARY_AUTH[@]}" --limit 1 >/dev/null 2>&1; then
+  if ! xcrun notarytool history "${NOTARY_AUTH[@]}" >/dev/null 2>&1; then
     echo "The notary service rejected these credentials." >&2
     if [ -n "${NOTARY_KEY:-}" ]; then
       echo "Check NOTARY_KEY / NOTARY_KEY_ID / NOTARY_ISSUER in $NOTARY_ENV." >&2
@@ -153,6 +153,10 @@ if [ -n "${NOTARIZE:-}" ]; then
   xcrun notarytool submit "$DMG" "${NOTARY_AUTH[@]}" --wait
   xcrun stapler staple "$DMG"
   xcrun stapler validate "$DMG"
+  # Staple the app as well. Submitting the dmg records the app's own hash, so
+  # a ticket for it exists too -- and once someone drags the app out of the
+  # dmg, the dmg's ticket no longer travels with it.
+  xcrun stapler staple "$APP"
   echo "    notarized and stapled"
 fi
 
@@ -182,7 +186,11 @@ if [ -z "${NO_INSTALL:-}" ]; then
   rm -rf /Applications/Clauminella.app
   cp -R "$APP" /Applications/Clauminella.app
 
-  if [ -n "$LOCAL_ID" ]; then
+  if [ -n "$LOCAL_ID" ] && [ "$LOCAL_ID" = "$SIGN_ID" ]; then
+    # Already signed with this identity upstream. Re-signing here would only
+    # strip the notarisation ticket off the copy people actually run.
+    echo "installed as signed: $LOCAL_ID"
+  elif [ -n "$LOCAL_ID" ]; then
     sign_bundle /Applications/Clauminella.app "$LOCAL_ID"
     echo "installed, signed as: $LOCAL_ID"
   else
