@@ -77,6 +77,7 @@ class Daemon:
         # session, so it is held separately and shown ahead of them.
         self.local_state = None
         self.local_revert_at = None
+        self.ask_depth = 0          # questions waiting on a button right now
         # Nobody is reading a status light in a dark room. Set while the
         # displays are asleep; the ring goes out and stays out.
         self.display_off = False
@@ -421,7 +422,12 @@ class Daemon:
         with self.listeners_lock:
             self.listeners.append((box, event))
 
-        previous = self.current()
+        # Count the questions in flight rather than remembering "the state
+        # before this one". Two sessions can ask at once, and the second one
+        # used to record the first one's orange as what to restore -- which it
+        # then restored, with no expiry, leaving the ring blinking for good.
+        with self.state_lock:
+            self.ask_depth += 1
         self.set_state("ask")
         approve = str(self.cfg["approve_switch"])
         deny = str(self.cfg["deny_switch"])
@@ -451,14 +457,26 @@ class Daemon:
             with self.listeners_lock:
                 self.listeners = [(b, e) for b, e in self.listeners if b is not box]
 
-        if decision == "allow":
-            self.set_state("done", revert_to=previous, after=0.6)
+        with self.state_lock:
+            self.ask_depth = max(0, self.ask_depth - 1)
+            others_waiting = self.ask_depth > 0
+
+        if decision == "gone":
+            log("ask: answered on screen (hook exited)")
+
+        if others_waiting:
+            # Someone else is still waiting; keep the ring on their question.
+            self.set_state("ask")
+        elif decision == "allow":
+            self.set_state("done", after=0.6)
         elif decision == "deny":
-            self.set_state("error", revert_to=previous, after=0.6)
+            self.set_state("error", after=0.6)
         else:
-            if decision == "gone":
-                log("ask: answered on screen (hook exited)")
-            self.set_state(previous)
+            # Clear the override outright instead of pinning whatever was
+            # showing before. The session registry is the real source of
+            # truth, and pinning a session state here would freeze it just as
+            # surely as the orange did.
+            self.set_state("idle")
         return decision
 
     # ---- socket ---------------------------------------------------------
