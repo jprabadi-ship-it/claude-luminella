@@ -90,8 +90,10 @@ def ensure_running(wait=5.0):
 
 
 SESSION = {}
-# Which hook event is being handled. Sent with every state change so the app
-# can tell an event that can only follow an approval from one that precedes it.
+# Which hook event is being handled, and which tool call it belongs to. Sent
+# with every message so the app can tell an event that can only follow an
+# approval from one that precedes it -- and, for tool events, tell whether it
+# belongs to the very call being asked about or to a sibling running beside it.
 EVENT = {}
 
 
@@ -142,6 +144,7 @@ def ancestor_pids(limit=15):
 
 def ask(tool, timeout):
     payload = {"cmd": "ask", "tool": tool, "timeout": timeout, "pids": ancestor_pids()}
+    payload.update(EVENT)
     # Which session is asking, so the notification can say so. With several
     # running, "waiting for approval" on its own does not tell you where to go.
     payload.update(SESSION)
@@ -183,6 +186,8 @@ def main():
 
     event = payload.get("hook_event_name", "")
     EVENT["event"] = event
+    if payload.get("tool_use_id"):
+        EVENT["tool_use_id"] = payload["tool_use_id"]
     cfg = load_config()
     if payload.get("session_id"):
         SESSION["session_id"] = payload["session_id"]
