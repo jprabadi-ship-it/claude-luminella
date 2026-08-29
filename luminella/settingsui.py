@@ -468,8 +468,10 @@ class SettingsController(NSObject):
                 alert = NSAlert.alloc().init()
                 alert.setMessageText_("アクセシビリティの許可が必要です")
                 alert.setInformativeText_(
-                    "システム設定 → プライバシーとセキュリティ → アクセシビリティで\n"
-                    "Clauminella を許可してください。許可するまではクリップボードにのみ入ります。")
+                    "システム設定 → プライバシーとセキュリティ を開き、\n"
+                    "「デバイスの制御とデータへのアクセス」（macOS 26 より前は\n"
+                    "「アクセシビリティ」）で Clauminella を許可してください。\n\n"
+                    "許可するまではクリップボードにのみ入ります。")
                 alert.runModal()
         self._save({key: enabled})
         if key == "sound" and enabled:

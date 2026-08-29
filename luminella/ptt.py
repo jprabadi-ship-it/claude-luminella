@@ -138,7 +138,9 @@ def ensure_text_focus():
     # sends you looking in the wrong place. Signing the app with a different
     # certificate is enough to lose the grant, so say what is actually wrong.
     if not accessibility_trusted():
-        return False, "アクセシビリティの許可がありません（システム設定で許可し直してください）"
+        return False, ("アクセシビリティの許可がありません（システム設定 → "
+                       "プライバシーとセキュリティ → デバイスの制御と"
+                       "データへのアクセス）")
 
     front = NSWorkspace.sharedWorkspace().frontmostApplication()
     if front is None:
