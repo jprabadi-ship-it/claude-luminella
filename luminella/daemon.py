@@ -597,6 +597,12 @@ class Daemon:
             elif cmd == "readsw":
                 timeout = float(req.get("timeout", 15))
                 reply = {"switch": self.read_switch(timeout)}
+            elif cmd == "axcheck":
+                # Accessibility is granted to a bundle's signature, so it can
+                # fall off without anything visibly changing. Worth being able
+                # to ask rather than infer it from a failure message.
+                from luminella import ptt as _ptt
+                reply = {"accessibility": _ptt.accessibility_trusted()}
             elif cmd == "quit":
                 reply = {"ok": True}
                 self.running = False

@@ -133,6 +133,13 @@ def ensure_text_focus():
     except ImportError as exc:
         return True, "AX を読み込めません (%s)" % exc  # do not block the paste
 
+    # Without this permission every AX query below fails, and the message that
+    # came out said "no focused window" -- which reads as a focus problem and
+    # sends you looking in the wrong place. Signing the app with a different
+    # certificate is enough to lose the grant, so say what is actually wrong.
+    if not accessibility_trusted():
+        return False, "アクセシビリティの許可がありません（システム設定で許可し直してください）"
+
     front = NSWorkspace.sharedWorkspace().frontmostApplication()
     if front is None:
         return True, "最前面アプリが取得できません"
