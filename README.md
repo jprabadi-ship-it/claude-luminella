@@ -59,10 +59,27 @@ Luminella のフックが追記される。既存のフックには触らず追�
 | 項目 | 内容 |
 |---|---|
 | 状態 / デバイス | 現在の状態と接続状況 |
-| 許可・拒否ボタンを割り当て | リングが光っている間に押したボタンを記録 |
+| セッション一覧 | 走っているセッションと状態。**クリックすると待機中に戻せる** |
+| 設定… | 設定画面を開く（下記） |
 | フックを導入 / 解除 | `~/.claude/settings.json` の編集 |
 | 設定ファイル・ログを開く | |
 | デバイスに再接続 | Core を終了させた後などに |
+
+### 設定画面
+
+「設定…」から開く。項目はすべて即時反映で、OK ボタンはない。
+
+| タブ | 内容 |
+|---|---|
+| 一般 | 通知（許可待ち / 入力待ちで別）、前面に出す、画面消灯時の消灯、入力欄への直接入力、マイク選択 |
+| ボタン | SW1〜8 の役割（なし / 許可 / 拒否 / 中断 / 定型プロンプト）。本体の上面図に現在の割り当てを反映 |
+| 音 | 状態ごとにシステムサウンドを割り当て。選んだ瞬間に試聴される |
+
+ボタンの番号と物理位置の対応を覚えていなくてよいように、
+「本体のボタンを押して行を探す…」で押したボタンの行に印が付く。
+
+**定型プロンプト**は決まった文面をそのセッションへ送る。`submit` を外すと
+入力欄に置くだけで送信しない。押し間違いがそのまま指示になるため、既定は空。
 
 アプリ未起動でも、Claude Code の `SessionStart` フックが
 バンドル ID (`com.rabadi.clauminella`) 経由で自動起動する。
@@ -95,8 +112,8 @@ tools/restart.sh        デーモン再起動（CLI版）
 ## ビルド
 
 ```sh
-tools/build_app.sh                                  # ad-hoc 署名（既定）
-SIGN_ID="Developer ID Application: ..." tools/build_app.sh
+tools/build_app.sh                                  # 手元用
+NOTARIZE=1 tools/build_app.sh                       # 配布用（署名＋公証）
 NO_INSTALL=1 tools/build_app.sh                     # /Applications へ入れない
 ```
 
@@ -104,20 +121,36 @@ NO_INSTALL=1 tools/build_app.sh                     # /Applications へ入れな
 マイクの許可は利用者が指定したアプリに紐づくため、`dist/` から動かしていると
 「許可したアプリ」と「実際に動いているアプリ」がずれる。
 
-既定は ad-hoc 署名。Apple Development 証明書で署名しても、
-受け取る側の手間は ad-hoc と変わらない（どちらも初回に手動で開く必要がある）のに
-証明書の期限と失効リスクを負うだけなので使わない。
-そのまま開けるようにするには Developer ID + notarization が要る。
+Developer ID 証明書があればそれを自動で使い、無ければ ad-hoc になる。
+ad-hoc の成果物は**このマシンでしか開けない**ので、配布するなら `NOTARIZE=1`。
 
-配布した相手がやること（macOS 15 以降は右クリック→開くが効かない）:
+### 公証
 
-**システム設定 → プライバシーとセキュリティ → 「このまま開く」**
+`NOTARIZE=1` は Developer ID で署名し、dmg を Apple へ送り、
+チケットを dmg と .app の両方に添付する。**アプリにも必要**で、
+dmg にしか貼らないと、そこから取り出した時点でチケットが付いてこない。
 
-またはコマンドで:
+資格情報は `~/.claude/luminella/notary.env`（リポジトリ外）に置く:
 
 ```sh
-xattr -d com.apple.quarantine /Applications/Clauminella.app
+NOTARY_KEY=$HOME/.appstoreconnect/private_keys/AuthKey_XXXXXXXXXX.p8
+NOTARY_KEY_ID=XXXXXXXXXX
+NOTARY_ISSUER=00000000-0000-0000-0000-000000000000
 ```
+
+App Store Connect の API キーを使う。キーチェーンのプロファイル
+（`notarytool store-credentials`）でも動くが、Xcode / Xcode-beta /
+CommandLineTools と notarytool が複数あると、片方で保存したものが
+もう片方から見えないことがある。ファイルならその影響を受けない。
+資格情報はビルド前に検証するので、3分待ってから落ちることはない。
+
+**署名を変えると TCC の許可が落ちる。** 許可はバンドルの署名に紐づくので、
+ad-hoc → Apple Development → Developer ID と変えるたびに別アプリ扱いになる。
+しかも一覧には古いエントリが「オン」のまま残るため、見た目では気づけない。
+削除してから入れ直す。証明書が同じ間は落ちない。
+
+macOS 26 ではこの権限は **システム設定 → プライバシーとセキュリティ →
+「デバイスの制御とデータへのアクセス」**（以前の「アクセシビリティ」）にある。
 
 `codesign --deep` は**使えない**。バンドル内の `.so` と同梱 python の
 Team ID が食い違い、dyld が
@@ -398,23 +431,39 @@ USB ケーブルの出ている側を奥とする。
 }
 ```
 
-- `approve_switch` / `deny_switch` — `tools/map_buttons.py` で対話的に設定できる
+- `approve_switch` / `deny_switch` — 設定画面のボタンタブから割り当てるのが早い
+- `switch_actions` — ボタンに割り当てた動作。設定画面から編集できる
+
+  ```json
+  "switch_actions": {
+    "1": {"type": "prompt", "text": "続けて", "submit": true},
+    "8": {"type": "interrupt"}
+  }
+  ```
+
 - `gated_tools` — ここに入れたツールは `PreToolUse` の段階で必ずボタン待ちになる。
   `PermissionRequest` 経由で足りるので通常は空でよい
-- 変更後は `tools/restart.sh`
+- 設定画面からの変更は即時反映される。ファイルを直接書いた場合は `tools/restart.sh`
+
+**SW8 は押下しか報告しない。** 押して話すのような長押し系には使えないが、
+単発の役割（許可 / 拒否 / 中断 / 定型プロンプト）なら問題なく使える。
 
 ## 注意
 
 - **アプリバンドルは環境が違う。** py2app は `PYTHONHOME` を設定し、ロケールを
   引き継がない。外部コマンドを呼ぶ箇所では環境を掃除し（`ptt.clean_env`）、
   出力の復号は UTF-8 を明示すること。ソースで動いてもバンドルで動くとは限らない
-- **ad-hoc 署名だとマイクの許可を毎回聞かれる。** TCC は署名の同一性に権限を
-  紐づけるため、ビルドのたびに別アプリと見なされる。手元で使うなら
-  `SIGN_ID` を渡して署名すること
+- **ad-hoc 署名だと許可を毎回聞かれる。** TCC は署名の同一性に権限を
+  紐づけるため、ビルドのたびに別アプリと見なされる。証明書があれば
+  `build_app.sh` が自動で使うので、通常は意識しなくてよい
 - **Luminella Core / Orbital2 Core とは同時に使えない。** 同じシリアルポートを取り合う。
   デーモンが `handshake no reply` を吐く時はまずこれを疑う
 - `PermissionRequest` には `claude-remote-approver` も同居している。
-  両方が判断を返し得るため、遠隔承認と物理ボタンを同時に使う場合は挙動を確認すること
+  そちらが承認してもこちらのフックは終了させられないため、リングだけが
+  待ち続けることになる。フックが報告する後続イベント（そのツール呼び出しの
+  `PostToolUse`、または `Stop` 等）で待ちを解除している。
+  **`PreToolUse` を解除条件に入れてはいけない** — 許可待ちの直前に走るので、
+  入れるとボタン承認が常に打ち切られる
 - デバイスを抜くとデーモンは書き込み失敗を検知して自己終了する。
   次のフック発火時に自動で起動し直す
 
