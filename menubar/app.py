@@ -22,6 +22,11 @@ from luminella import config, daemon, hookinstall, icon, ptt
 
 APP_NAME = "Clauminella"
 
+# States that show the working mark beside the ring: the ones where Claude is
+# getting on with it. The blinking states already demand attention on their
+# own, and a second moving thing next to them would only compete.
+MARKED_STATES = ("busy",)
+
 # Fallback glyphs, used only if the drawn icons cannot be produced.
 GLYPH = {
     "idle": "🔵",
@@ -37,7 +42,7 @@ GLYPH = {
 }
 
 # Marks for the session list. Plain characters rather than the ring icons,
-# which only exist as files sized for the status bar.
+# which are drawn at status bar size and would be illegible in a menu row.
 MARK = {
     "ask": "\N{LARGE ORANGE CIRCLE}", "notify": "\N{LARGE PURPLE CIRCLE}",
     "error": "\N{LARGE RED CIRCLE}", "done": "\N{LARGE GREEN CIRCLE}",
@@ -107,11 +112,12 @@ class LuminellaApp(rumps.App):
         super().__init__(APP_NAME, title="", quit_button=None)
         self.cfg = config.load()
         try:
-            self.icons = icon.render_states(self.cfg["states"])
+            self.icons = icon.render_states(self.cfg["states"], marked=MARKED_STATES)
         except Exception:
             daemon.log("icon rendering failed\n%s" % traceback.format_exc())
             self.icons = {}
         self.shown_state = None
+        self.mark_frame = 0
         self._logged_icon = False
         # Notifications are posted from the rumps timer, which runs on the
         # main thread. Everything that wants to notify -- the daemon's socket
@@ -210,11 +216,29 @@ class LuminellaApp(rumps.App):
             self.daemon.serve()
             time.sleep(1)
 
+    @rumps.timer(0.07)
+    def tick_mark(self, _):
+        """Advance the working mark.
+
+        Its own timer because the ring only needs repainting when the state
+        changes, while the mark has to move; running the whole refresh this
+        often would re-read settings and re-title every menu row 14 times a
+        second for nothing.
+        """
+        if self.shown_state not in MARKED_STATES:
+            return
+        frames = self.icons.get(self.shown_state)
+        if not isinstance(frames, list) or not frames:
+            return
+        self.mark_frame = (self.mark_frame + 1) % len(frames)
+        self._set_status_image(frames[self.mark_frame])
+
     @rumps.timer(0.4)
     def refresh(self, _):
         state = self.daemon.current() if self.daemon.running else "off"
         if state != self.shown_state:
             self.shown_state = state
+            self.mark_frame = 0
             self._show_icon(state)
         self.item_state.title = f"状態: {STATE_LABEL.get(state, state)}"
 
@@ -335,30 +359,44 @@ class LuminellaApp(rumps.App):
         for title, message in pending:
             self._post_note(title, message)
 
+    def _set_status_image(self, image):
+        """Put one NSImage in the status item, title cleared.
+
+        Set on the status item directly rather than through rumps' icon
+        property, which only takes a file path. The images live in memory, so
+        there is no file to go missing underneath us.
+        """
+        item = self._nsapp.nsstatusitem
+        item.setImage_(image)
+        # rumps writes the app name into the status item whenever both the
+        # title and the image are empty, which is the case for the moment
+        # before the first icon is drawn -- and it never takes the name back
+        # out. Clear it so the ring stands alone.
+        item.setTitle_("")
+        if not self._logged_icon:
+            self._logged_icon = True
+            shown = item.image()
+            daemon.log("statusitem: image=%s menu=%s items=%s" % (
+                tuple(shown.size()) if shown else None,
+                item.menu() is not None,
+                item.menu().numberOfItems() if item.menu() else 0))
+
     def _show_icon(self, state):
-        path = self.icons.get(state)
-        if not path:
+        image = self.icons.get(state)
+        if isinstance(image, list):
+            image = image[self.mark_frame % len(image)] if image else None
+        if image is None:
+            # No drawn image for this state. Clear the picture before falling
+            # back to a glyph: leaving the last one in place put an emoji
+            # beside a stale ring, which read as a stray mark stuck to the icon.
+            try:
+                self._nsapp.nsstatusitem.setImage_(None)
+            except Exception:
+                pass
             self.title = GLYPH.get(state, "⚫")
             return
         try:
-            self.icon = path
-            # rumps loads the file at its pixel size; the image is drawn at 2x
-            # so it has to be told the point size or it fills the whole bar.
-            self._icon_nsimage.setSize_((icon.PT_W, icon.PT))
-            self._nsapp.setStatusBarIcon()
-            # rumps writes the app name into the status item whenever both the
-            # title and the image are empty, which is the case for the moment
-            # before the first icon is drawn -- and it never takes the name
-            # back out. Clear it so the ring stands alone.
-            self._nsapp.nsstatusitem.setTitle_("")
-            if not self._logged_icon:
-                self._logged_icon = True
-                item = self._nsapp.nsstatusitem
-                image = item.image()
-                daemon.log("statusitem: image=%s menu=%s items=%s" % (
-                    tuple(image.size()) if image else None,
-                    item.menu() is not None,
-                    item.menu().numberOfItems() if item.menu() else 0))
+            self._set_status_image(image)
         except Exception:
             daemon.log("icon update failed\n%s" % traceback.format_exc())
             self.title = GLYPH.get(state, "⚫")
