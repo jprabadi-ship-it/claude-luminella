@@ -217,21 +217,33 @@ class LuminellaApp(rumps.App):
         marks = self.cfg.get("tool_marks") or {}
 
         # Colours come out of JSON as lists; tuples so they can key the cache.
-        wanted = {None: (tuple(busy["color"]), "dots")}
+        # config merges tool_states one level deep, so editing a tool to set
+        # only its mode drops the colour from that entry. Reading it blindly
+        # took the whole app down before it could log why, so fall back to the
+        # busy colour for anything that does not supply its own.
+        def colour_of(spec):
+            if isinstance(spec, dict) and spec.get("color"):
+                return tuple(spec["color"])
+            return tuple(busy["color"])
+
+        wanted = {None: (colour_of(busy), "dots")}
         for tool in set(marks) | set(tools):
-            colour = tuple((tools.get(tool) or busy)["color"])
-            wanted[tool] = (colour, marks.get(tool, "dots"))
+            wanted[tool] = (colour_of(tools.get(tool)), marks.get(tool, "dots"))
 
         built = {}
         self.mark_frames = {}
-        for tool, key in wanted.items():
+        # The resting dots first, so a tool whose own shape will not build has
+        # something of the right width to fall back to. Leaving it without any
+        # frames dropped it to the ring-only image, 23pt narrower than every
+        # other mark, and the status item jumped each time that tool ran.
+        for tool, key in sorted(wanted.items(), key=lambda kv: kv[0] is not None):
             if key not in built:
                 try:
                     built[key] = icon.frames(key[0], key[1])
                 except Exception:
                     daemon.log("mark %r failed\n%s" % (key[1], traceback.format_exc()))
                     built[key] = None
-            self.mark_frames[tool] = built[key]
+            self.mark_frames[tool] = built[key] or self.mark_frames.get(None)
         daemon.log("marks: %d shapes for %d tools" % (len(built), len(wanted) - 1))
 
     # ---- daemon lifecycle ----------------------------------------------
@@ -280,7 +292,10 @@ class LuminellaApp(rumps.App):
         # Which tool is running decides which mark; a change of tool restarts
         # the cycle so a new shape does not begin mid-stride.
         mark = self.daemon.busy_tool if state == MARKED_STATE else None
-        if mark not in self.mark_frames:
+        # Truthiness, not membership: a shape that failed to build is stored
+        # as None under its own key, and testing for the key alone let it
+        # through to a ring-only image 23pt narrower than every other mark.
+        if not self.mark_frames.get(mark):
             mark = None
         if state != self.shown_state or mark != self.shown_mark:
             self.shown_state = state

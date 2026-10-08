@@ -49,7 +49,12 @@ MARK_GAP = 11.0
 MARK_W = 35.2
 MARK_H = 20.0
 
-DIM = 0.38       # alpha for the parts of a mark that are not the moving one
+# Alpha for the parts of a mark that are not the moving one. The pill behind
+# them is the same colour at 0.28, so 0.38 composited to 0.55 against a 0.28
+# surround -- about 1.5:1, which is to say invisible, and the marks read as
+# fewer elements than they have. 0.55 lands near 0.68 and separates from both
+# the pill and the lit element.
+DIM = 0.55
 
 KINDS = ("dots", "read", "write", "code", "search")
 

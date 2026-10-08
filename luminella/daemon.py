@@ -366,8 +366,16 @@ class Daemon:
                         log("state-change handler failed: %s" % exc)
             spec = self.cfg["states"].get(name, self.cfg["states"]["idle"])
             if name == "busy" and self.busy_tool:
-                spec = (self.cfg.get("tool_states") or {}).get(self.busy_tool, spec)
-            r, g, b = spec["color"]
+                tool = (self.cfg.get("tool_states") or {}).get(self.busy_tool)
+                if isinstance(tool, dict) and tool.get("color"):
+                    spec = tool
+            # A colour missing or the wrong shape used to raise here, and this
+            # runs on the animation thread: the ring froze on whatever it was
+            # last showing, with nothing to say why.
+            try:
+                r, g, b = spec["color"]
+            except (KeyError, TypeError, ValueError):
+                r, g, b = self.cfg["states"]["idle"]["color"]
             mode = spec.get("mode", "solid")
             t = time.time()
 
