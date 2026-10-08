@@ -7,6 +7,13 @@ this app whatever colour it happens to be, and the shape itself now carries
 what the emoji could not: a solid ring for settled states, a broken one for
 states that want attention.
 
+Beside the ring, while a session is working, sits a mark saying what kind of
+work it is -- reading, writing, searching, running something. The shapes follow
+the resting indicator in Claude's own design language; they are drawn here
+rather than bundled as sprite sheets, so nothing of anyone else's ships inside
+a GPLv3 repository, and so the mark can take the state's own colour and read as
+one object with the ring.
+
 Images are built in memory rather than written to disk. They used to go to a
 tempfile.mkdtemp() directory, which macOS sweeps after a few days -- every icon
 then failed to load and the status item fell back to an emoji beside a stale
@@ -22,6 +29,7 @@ from AppKit import (
     NSColor,
     NSGraphicsContext,
     NSImage,
+    NSMakeRect,
 )
 
 PX_H = 36        # rendered at 2x for retina
@@ -31,19 +39,19 @@ RADIUS = 12.0
 STROKE = 3.6
 DOT = 3.4
 
-# Working mark: three dots whose sizes travel as a wave, after the resting
-# indicator in Claude's own design language. Drawn here rather than bundled as
-# sprite sheets -- the shape is the reference, the colour stays the state's own
-# so the ring and the mark read as one object.
-MARK_DOTS = 3
-MARK_SPACING = 13.0
-MARK_R_MIN = 2.2
-MARK_R_MAX = 4.6
 MARK_FRAMES = 16
-# Space between the ring's outer edge and the first dot. Deliberately smaller
-# than the pale margin at either end of the pill, so the ring and the dots
-# group together rather than reading as two things at opposite ends.
+# Space between the ring's outer edge and the mark. Deliberately smaller than
+# the pale margin at either end of the pill, so the ring and the mark group
+# together rather than reading as two things at opposite ends.
 MARK_GAP = 11.0
+# Every mark is drawn into a box this size, so switching between them never
+# changes the width of the status item.
+MARK_W = 35.2
+MARK_H = 20.0
+
+DIM = 0.38       # alpha for the parts of a mark that are not the moving one
+
+KINDS = ("dots", "read", "write", "code", "search")
 
 
 def _visible(rgb):
@@ -63,35 +71,123 @@ def _visible(rgb):
     return (r / 255.0, g / 255.0, b / 255.0)
 
 
-def _draw_mark(x0, cy, phase):
-    """Three dots, sizes travelling as a wave from left to right."""
-    for i in range(MARK_DOTS):
-        angle = phase - i * (2.0 * math.pi / MARK_DOTS)
-        swing = (math.sin(angle) + 1.0) / 2.0          # 0..1
-        r = MARK_R_MIN + (MARK_R_MAX - MARK_R_MIN) * swing
-        cx = x0 + i * MARK_SPACING
-        NSBezierPath.bezierPathWithOvalInRect_(
-            ((cx - r, cy - r), (r * 2, r * 2))
-        ).fill()
+def _set(rgb, alpha=1.0):
+    r, g, b = rgb
+    NSColor.colorWithCalibratedRed_green_blue_alpha_(r, g, b, alpha).set()
 
 
-def render(rgb, gap=True, phase=None):
+def _circle(cx, cy, r):
+    NSBezierPath.bezierPathWithOvalInRect_(((cx - r, cy - r), (r * 2, r * 2))).fill()
+
+
+def _bar(x, y, w, h):
+    NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
+        ((x, y - h / 2.0), (w, h)), h / 2.0, h / 2.0).fill()
+
+
+def _wave(phase, i, n):
+    """0..1, peaking for one element at a time as the phase travels."""
+    return (math.sin(phase - i * (2.0 * math.pi / n)) + 1.0) / 2.0
+
+
+# ---- the marks -------------------------------------------------------------
+#
+# Each draws inside (left, cy) .. (left + MARK_W, cy), in the colour given.
+# Shapes are chosen to be told apart at 18 points by silhouette, not only by
+# motion -- at this size you glance, you do not watch.
+
+def _mark_dots(rgb, left, cy, phase):
+    """Three dots whose sizes travel as a wave. The resting indicator."""
+    n, r_min, r_max = 3, 2.2, 4.6
+    spacing = (MARK_W - r_max * 2) / (n - 1)
+    for i in range(n):
+        r = r_min + (r_max - r_min) * _wave(phase, i, n)
+        _set(rgb)
+        _circle(left + r_max + i * spacing, cy, r)
+
+
+def _mark_read(rgb, left, cy, phase):
+    """Three lines of text with the eye travelling down them."""
+    widths = (MARK_W, MARK_W * 0.72, MARK_W * 0.88)
+    n = len(widths)
+    for i, w in enumerate(widths):
+        y = cy + (n - 1) / 2.0 * 7.0 - i * 7.0
+        lit = _wave(phase, i, n)
+        _set(rgb, DIM + (1.0 - DIM) * lit)
+        _bar(left, y, w, 3.4)
+
+
+def _mark_write(rgb, left, cy, phase):
+    """A nib running along a line, leaving it behind."""
+    t = (phase % (2.0 * math.pi)) / (2.0 * math.pi)
+    _set(rgb, DIM)
+    _bar(left, cy - 6.0, MARK_W, 3.0)                     # the line being written on
+    travel = MARK_W - 6.0
+    _set(rgb)
+    _bar(left, cy - 6.0, max(3.0, travel * t), 3.0)       # the part already written
+    _circle(left + travel * t + 1.5, cy + 1.5, 3.4)       # the nib, held above it
+
+
+def _mark_code(rgb, left, cy, phase):
+    """Two chevrons facing out, breathing in turn. Angular, so it cannot be
+    mistaken for the dots at a glance."""
+    path_w, inset = 7.0, 3.0
+    for i, direction in enumerate((-1, 1)):
+        lit = _wave(phase, i, 2)
+        _set(rgb, DIM + (1.0 - DIM) * lit)
+        x = left + MARK_W / 2.0 + direction * (inset + path_w)
+        tip = x + direction * path_w * 0.9
+        p = NSBezierPath.bezierPath()
+        p.setLineWidth_(3.0)
+        p.setLineCapStyle_(1)
+        p.setLineJoinStyle_(1)
+        p.moveToPoint_((x, cy + 6.5))
+        p.lineToPoint_((tip, cy))
+        p.lineToPoint_((x, cy - 6.5))
+        p.stroke()
+
+
+def _mark_search(rgb, left, cy, phase):
+    """A dot sweeping around a ring: looking over a field."""
+    cx = left + MARK_W / 2.0
+    rx, ry = MARK_W / 2.0 - 4.0, MARK_H / 2.0 - 4.0
+    _set(rgb, DIM)
+    ring = NSBezierPath.bezierPathWithOvalInRect_(
+        NSMakeRect(cx - rx, cy - ry, rx * 2, ry * 2))
+    ring.setLineWidth_(2.4)
+    ring.stroke()
+    _set(rgb)
+    _circle(cx + rx * math.cos(phase), cy + ry * math.sin(phase), 3.6)
+
+
+MARKS = {
+    "dots": _mark_dots,
+    "read": _mark_read,
+    "write": _mark_write,
+    "code": _mark_code,
+    "search": _mark_search,
+}
+
+
+# ---- the icon --------------------------------------------------------------
+
+def render(rgb, gap=True, phase=None, kind="dots"):
     """Draw one status item image. Returns an NSImage sized in points.
 
     phase is None for the ring alone, or an angle in radians to show the
-    working mark beside it.
+    working mark beside it; kind picks which mark.
     """
+    colour = _visible(rgb)
+    cx, cy = RING_W / 2.0, PX_H / 2.0
+
     # The pale margin the ring already sits in, reused as the margin after the
-    # last dot so both ends of the pill match. Fixing a width for the mark
-    # instead left 14pt of empty pill between ring and dots and only 3pt after
-    # them, which read as dots crammed into the right cap.
-    margin = RING_W / 2.0 - (RADIUS + STROKE / 2.0)
-    mark_x0 = RING_W / 2.0 + RADIUS + STROKE / 2.0 + MARK_GAP + MARK_R_MAX
-    if phase is None:
-        width = RING_W
-    else:
-        last = mark_x0 + (MARK_DOTS - 1) * MARK_SPACING + MARK_R_MAX
-        width = int(round(last + margin))
+    # mark so both ends of the pill match. Fixing a width for the mark instead
+    # left 14pt of empty pill between ring and mark and only 3pt after it,
+    # which read as a mark crammed into the right cap.
+    margin = cx - (RADIUS + STROKE / 2.0)
+    mark_left = cx + RADIUS + STROKE / 2.0 + MARK_GAP
+    width = RING_W if phase is None else int(round(mark_left + MARK_W + margin))
+
     rep = NSBitmapImageRep.alloc().initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel_(
         None, width, PX_H, 8, 4, True, False, NSCalibratedRGBColorSpace, 0, 0
     )
@@ -99,19 +195,15 @@ def render(rgb, gap=True, phase=None):
     NSGraphicsContext.saveGraphicsState()
     NSGraphicsContext.setCurrentContext_(context)
 
-    r, g, b = _visible(rgb)
-    cx, cy = RING_W / 2.0, PX_H / 2.0
-
     # Background: the state's own colour, pale and translucent, filling the
     # whole item as a rounded pill. A tinted field this size registers in the
     # corner of the eye where a thin ring alone did not.
-    NSColor.colorWithCalibratedRed_green_blue_alpha_(r, g, b, 0.28).set()
+    _set(colour, 0.28)
     NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
         ((0, 0), (width, PX_H)), cy, cy
     ).fill()
 
-    NSColor.colorWithCalibratedRed_green_blue_alpha_(r, g, b, 1.0).set()
-
+    _set(colour)
     ring = NSBezierPath.bezierPath()
     ring.setLineWidth_(STROKE)
     ring.setLineCapStyle_(1)  # round
@@ -125,13 +217,10 @@ def render(rgb, gap=True, phase=None):
             (cx, cy), RADIUS, 0.0, 360.0
         )
     ring.stroke()
-
-    NSBezierPath.bezierPathWithOvalInRect_(
-        ((cx - DOT, cy - DOT), (DOT * 2, DOT * 2))
-    ).fill()
+    _circle(cx, cy, DOT)
 
     if phase is not None:
-        _draw_mark(mark_x0, cy, phase)
+        MARKS.get(kind, _mark_dots)(colour, mark_left, cy, phase)
 
     NSGraphicsContext.restoreGraphicsState()
 
@@ -140,23 +229,17 @@ def render(rgb, gap=True, phase=None):
     return image
 
 
-def render_states(states, marked=()):
-    """Build every state's image. Returns {state: NSImage | [NSImage, ...]}.
+def frames(rgb, kind, gap=False):
+    """A full cycle of one mark, as a list of images."""
+    return [
+        render(rgb, gap=gap, phase=2.0 * math.pi * i / MARK_FRAMES, kind=kind)
+        for i in range(MARK_FRAMES)
+    ]
 
-    Blinking states get the broken ring and steady ones the closed ring, so
-    the shape says "waiting on you" even before the colour registers. States
-    named in `marked` get a list of frames instead of a single image, for the
-    working mark to animate through.
-    """
-    images = {}
-    for name, spec in states.items():
-        gap = spec.get("mode") == "blink"
-        if name in marked:
-            images[name] = [
-                render(spec["color"], gap=gap,
-                       phase=2.0 * math.pi * i / MARK_FRAMES)
-                for i in range(MARK_FRAMES)
-            ]
-        else:
-            images[name] = render(spec["color"], gap=gap)
-    return images
+
+def render_states(states):
+    """One image per state, for the states that do not animate."""
+    return {
+        name: render(spec["color"], gap=spec.get("mode") == "blink")
+        for name, spec in states.items()
+    }

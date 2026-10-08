@@ -107,6 +107,22 @@ DEFAULTS = {
     # prompt that fires from a mis-press sends an instruction you did not mean.
     "switch_actions": {},
 
+    # Which working mark shows beside the ring while a tool runs. The daemon
+    # already knows which tool it is; this says what to draw for it. Anything
+    # unlisted falls back to the resting dots.
+    # Shapes: dots, read, write, code, search.
+    "tool_marks": {
+        "Read": "read",
+        "NotebookRead": "read",
+        "Write": "write",
+        "Edit": "write",
+        "NotebookEdit": "write",
+        "Bash": "code",
+        "Grep": "search",
+        "Glob": "search",
+        "WebSearch": "search",
+        "WebFetch": "search",
+    },
     # Ring colour while a particular tool runs. All breathe, so motion still
     # means "working" and only the hue says which tool. Kept to two: more
     # colours is more to remember for no extra decision.
@@ -156,7 +172,7 @@ def load():
         return cfg
     for key, value in user.items():
         if key in ("states", "sounds", "stick_actions", "switch_actions",
-                   "tool_states") and isinstance(value, dict):
+                   "tool_states", "tool_marks") and isinstance(value, dict):
             cfg[key].update(value)
         else:
             cfg[key] = value

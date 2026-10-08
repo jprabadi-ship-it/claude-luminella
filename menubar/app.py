@@ -22,10 +22,14 @@ from luminella import config, daemon, hookinstall, icon, ptt
 
 APP_NAME = "Clauminella"
 
-# States that show the working mark beside the ring: the ones where Claude is
-# getting on with it. The blinking states already demand attention on their
-# own, and a second moving thing next to them would only compete.
-MARKED_STATES = ("busy",)
+# The working mark shows only while a session is getting on with something.
+# The blinking states already demand attention on their own, and a second
+# moving thing next to them would only compete.
+MARKED_STATE = "busy"
+# Frames a second for the mark. The sprite sheets this follows run at 30; the
+# status item is redrawn at a gentler rate and frames are chosen by the clock,
+# so the motion keeps its real speed either way.
+MARK_FPS = 30.0
 
 # Fallback glyphs, used only if the drawn icons cannot be produced.
 GLYPH = {
@@ -111,13 +115,12 @@ class LuminellaApp(rumps.App):
     def __init__(self):
         super().__init__(APP_NAME, title="", quit_button=None)
         self.cfg = config.load()
-        try:
-            self.icons = icon.render_states(self.cfg["states"], marked=MARKED_STATES)
-        except Exception:
-            daemon.log("icon rendering failed\n%s" % traceback.format_exc())
-            self.icons = {}
+        self.icons = {}
+        self.mark_frames = {}
+        self._build_icons()
         self.shown_state = None
-        self.mark_frame = 0
+        self.shown_mark = None
+        self.mark_started = time.monotonic()
         self._logged_icon = False
         # Notifications are posted from the rumps timer, which runs on the
         # main thread. Everything that wants to notify -- the daemon's socket
@@ -196,6 +199,41 @@ class LuminellaApp(rumps.App):
 
         threading.Thread(target=self._run_daemon, daemon=True).start()
 
+    def _build_icons(self):
+        """Draw every still icon, and a cycle of frames per working mark.
+
+        One frame set per (tool colour, mark shape) pair rather than per tool,
+        so two tools that look the same share the work.
+        """
+        try:
+            self.icons = icon.render_states(self.cfg["states"])
+        except Exception:
+            daemon.log("icon rendering failed\n%s" % traceback.format_exc())
+            self.icons = {}
+            return
+
+        busy = self.cfg["states"][MARKED_STATE]
+        tools = self.cfg.get("tool_states") or {}
+        marks = self.cfg.get("tool_marks") or {}
+
+        # Colours come out of JSON as lists; tuples so they can key the cache.
+        wanted = {None: (tuple(busy["color"]), "dots")}
+        for tool in set(marks) | set(tools):
+            colour = tuple((tools.get(tool) or busy)["color"])
+            wanted[tool] = (colour, marks.get(tool, "dots"))
+
+        built = {}
+        self.mark_frames = {}
+        for tool, key in wanted.items():
+            if key not in built:
+                try:
+                    built[key] = icon.frames(key[0], key[1])
+                except Exception:
+                    daemon.log("mark %r failed\n%s" % (key[1], traceback.format_exc()))
+                    built[key] = None
+            self.mark_frames[tool] = built[key]
+        daemon.log("marks: %d shapes for %d tools" % (len(built), len(wanted) - 1))
+
     # ---- daemon lifecycle ----------------------------------------------
 
     def _run_daemon(self):
@@ -224,21 +262,30 @@ class LuminellaApp(rumps.App):
         changes, while the mark has to move; running the whole refresh this
         often would re-read settings and re-title every menu row 14 times a
         second for nothing.
+
+        The frame is chosen by the clock rather than stepped once per tick, so
+        the motion runs at its intended speed whatever rate this fires at.
         """
-        if self.shown_state not in MARKED_STATES:
+        if self.shown_state != MARKED_STATE:
             return
-        frames = self.icons.get(self.shown_state)
-        if not isinstance(frames, list) or not frames:
+        frames = self.mark_frames.get(self.shown_mark)
+        if not frames:
             return
-        self.mark_frame = (self.mark_frame + 1) % len(frames)
-        self._set_status_image(frames[self.mark_frame])
+        elapsed = time.monotonic() - self.mark_started
+        self._set_status_image(frames[int(elapsed * MARK_FPS) % len(frames)])
 
     @rumps.timer(0.4)
     def refresh(self, _):
         state = self.daemon.current() if self.daemon.running else "off"
-        if state != self.shown_state:
+        # Which tool is running decides which mark; a change of tool restarts
+        # the cycle so a new shape does not begin mid-stride.
+        mark = self.daemon.busy_tool if state == MARKED_STATE else None
+        if mark not in self.mark_frames:
+            mark = None
+        if state != self.shown_state or mark != self.shown_mark:
             self.shown_state = state
-            self.mark_frame = 0
+            self.shown_mark = mark
+            self.mark_started = time.monotonic()
             self._show_icon(state)
         self.item_state.title = f"状態: {STATE_LABEL.get(state, state)}"
 
@@ -382,9 +429,11 @@ class LuminellaApp(rumps.App):
                 item.menu().numberOfItems() if item.menu() else 0))
 
     def _show_icon(self, state):
-        image = self.icons.get(state)
-        if isinstance(image, list):
-            image = image[self.mark_frame % len(image)] if image else None
+        if state == MARKED_STATE:
+            frames = self.mark_frames.get(self.shown_mark)
+            image = frames[0] if frames else self.icons.get(state)
+        else:
+            image = self.icons.get(state)
         if image is None:
             # No drawn image for this state. Clear the picture before falling
             # back to a glyph: leaving the last one in place put an emoji

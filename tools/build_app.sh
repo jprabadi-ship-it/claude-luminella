@@ -198,7 +198,36 @@ if [ -z "${NO_INSTALL:-}" ]; then
     echo "macOS will ask for permissions again after every build"
   fi
   open /Applications/Clauminella.app
-  echo "launched: /Applications/Clauminella.app"
+
+  # Make sure it actually came up. A build that installs and launches a bundle
+  # which then dies in __init__ reports success all the way through -- which is
+  # exactly how a broken icon cache shipped once, looking like a clean build.
+  # nc -zU reports failure against a working unix socket here, so connect for
+  # real.
+  ping_sock() {
+    "$PY" - "$HOME/.claude/luminella/daemon.sock" <<'PING'
+import socket, sys
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.settimeout(1.5)
+try:
+    s.connect(sys.argv[1])
+    s.sendall(b'{"cmd": "ping"}\n')
+    sys.exit(0 if s.recv(256) else 1)
+except OSError:
+    sys.exit(1)
+PING
+  }
+  for _ in $(seq 1 20); do
+    if ping_sock; then
+      echo "launched: /Applications/Clauminella.app"
+      break
+    fi
+    sleep 0.5
+  done
+  if ! pgrep -f "/Clauminella.app/" >/dev/null 2>&1; then
+    echo "ERROR: the app exited right after launching -- see ~/.claude/luminella/daemon.log" >&2
+    exit 1
+  fi
 else
   echo "skipped (NO_INSTALL set)"
 fi
