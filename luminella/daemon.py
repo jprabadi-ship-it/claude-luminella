@@ -297,12 +297,19 @@ class Daemon:
             self.local_state = state
             self.local_revert_at = time.time() + after if after else None
 
-    def settle_ask(self, session_id, event, tool_use_id=None):
+    def settle_ask(self, session_id, event, tool_use_id=None, tool=None):
         """Release a pending question once its session reports moving past it.
 
         Notification is not a signal here even though it follows a question
         closely: it fires while the wait is still on, saying only that someone
         is being waited for.
+
+        A PermissionRequest arrives with no tool_use_id -- only PreToolUse and
+        PostToolUse carry one -- and treating "no id" as "any finished call
+        will do" meant whatever else the session happened to be running put the
+        question out about two seconds after it appeared. Without an id, fall
+        back to the tool's name, which at least cannot be answered by an
+        unrelated call finishing.
         """
         if not session_id or not event:
             return
@@ -311,8 +318,13 @@ class Daemon:
             return
         with self.state_lock:
             waiters = list(self.ask_waiters.get(session_id, ()))
-        for settled, asked_about in waiters:
-            if session_wide or asked_about is None or asked_about == tool_use_id:
+        for settled, asked_id, asked_tool in waiters:
+            if session_wide:
+                settled.set()
+            elif asked_id is not None:
+                if asked_id == tool_use_id:
+                    settled.set()
+            elif asked_tool and asked_tool == tool:
                 settled.set()
 
     def set_session_state(self, session_id, state, cwd=None, tool=None,
@@ -462,7 +474,7 @@ class Daemon:
         except OSError:
             return True
 
-    def ask(self, timeout, conn=None, session_id=None, tool_use_id=None):
+    def ask(self, timeout, conn=None, session_id=None, tool_use_id=None, tool=None):
         box, event = [], threading.Event()
         with self.listeners_lock:
             self.listeners.append((box, event))
@@ -476,7 +488,7 @@ class Daemon:
             self.ask_depth += 1
             if session_id:
                 self.ask_waiters.setdefault(session_id, []).append(
-                    (settled, tool_use_id))
+                    (settled, tool_use_id, tool))
         self.set_state("ask")
         approve = str(self.cfg["approve_switch"])
         deny = str(self.cfg["deny_switch"])
@@ -572,7 +584,7 @@ class Daemon:
                 session_id = req.get("session_id")
                 if session_id:
                     self.settle_ask(session_id, req.get("event"),
-                                    req.get("tool_use_id"))
+                                    req.get("tool_use_id"), req.get("tool"))
                     self.set_session_state(
                         session_id, name,
                         cwd=req.get("cwd"), tool=req.get("tool"),
@@ -598,7 +610,8 @@ class Daemon:
                         log("on_ask failed: %s" % exc)
                 reply = {"decision": self.ask(timeout, conn,
                                               req.get("session_id"),
-                                              req.get("tool_use_id"))}
+                                              req.get("tool_use_id"),
+                                              req.get("tool"))}
             elif cmd == "readhold":
                 switch, has_release = self.read_hold(float(req.get("timeout", 20)))
                 reply = {"switch": switch, "has_release": has_release}
