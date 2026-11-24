@@ -56,6 +56,12 @@ MARK_H = 20.0
 # the pill and the lit element.
 DIM = 0.55
 
+# The pill's edge: the same colour worn stronger. A pale field alone had no
+# boundary of its own, so it took whatever the menu bar was showing through;
+# an edge in its own hue gives it one without bringing in a second colour.
+EDGE_ALPHA = 0.72
+EDGE_WIDTH = 3.0
+
 KINDS = ("dots", "read", "write", "code", "search")
 
 
@@ -201,12 +207,19 @@ def render(rgb, gap=True, phase=None, kind="dots"):
     NSGraphicsContext.setCurrentContext_(context)
 
     # Background: the state's own colour, pale and translucent, filling the
-    # whole item as a rounded pill. A tinted field this size registers in the
-    # corner of the eye where a thin ring alone did not.
+    # whole item as a rounded pill, ringed by the same colour at strength. A
+    # tinted field this size registers in the corner of the eye where a thin
+    # ring alone did not; the edge keeps it legible whatever is behind it.
+    half = EDGE_WIDTH / 2.0
+    pill_h = PX_H - EDGE_WIDTH
+    pill = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
+        ((half, half), (width - EDGE_WIDTH, pill_h)), pill_h / 2.0, pill_h / 2.0
+    )
     _set(colour, 0.28)
-    NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
-        ((0, 0), (width, PX_H)), cy, cy
-    ).fill()
+    pill.fill()
+    _set(colour, EDGE_ALPHA)
+    pill.setLineWidth_(EDGE_WIDTH)
+    pill.stroke()
 
     _set(colour)
     ring = NSBezierPath.bezierPath()
