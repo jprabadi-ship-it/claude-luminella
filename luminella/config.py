@@ -61,6 +61,11 @@ DEFAULTS = {
     # glanced at; with the screens off there is nobody at the desk to glance.
     "off_when_display_sleeps": True,
 
+    # Ask GitHub for a newer build when the app starts. Nothing is downloaded
+    # or replaced without an answer; this only decides whether the question
+    # gets asked.
+    "check_updates": True,
+
     # Which switch approves / rejects a gated tool call.
     "approve_switch": "1",
     "deny_switch": "5",

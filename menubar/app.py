@@ -18,7 +18,7 @@ from AppKit import NSApplication, NSRunningApplication, NSWorkspace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from luminella import config, daemon, hookinstall, icon, ptt
+from luminella import config, daemon, hookinstall, icon, ptt, update
 
 APP_NAME = "Clauminella"
 
@@ -127,6 +127,8 @@ class LuminellaApp(rumps.App):
         # handler, the push-to-talk worker -- runs on other threads, and
         # AppKit quietly does nothing when called from those.
         self._pending_notes = []
+        self._pending_update = None
+        self._pending_update_note = None
         self._notes_lock = threading.Lock()
         self._notification_centre = None
         self._prepare_notifications()
@@ -149,6 +151,7 @@ class LuminellaApp(rumps.App):
         self.item_device = rumps.MenuItem("デバイス: 確認中…")
         self.item_hooks = rumps.MenuItem("Claude Code フック: 確認中…")
         self.item_ptt = rumps.MenuItem("プッシュトゥトーク: 確認中…")
+        self.item_rollback = rumps.MenuItem("前の版に戻す", callback=self.rollback)
         self.settings = None
 
         self.mics = []
@@ -173,6 +176,8 @@ class LuminellaApp(rumps.App):
             self.item_hooks,
             None,
             rumps.MenuItem("設定…", callback=self.open_settings),
+            rumps.MenuItem("更新を確認…", callback=self.check_update_now),
+            self.item_rollback,
             rumps.MenuItem("フックを導入", callback=self.install_hooks),
             rumps.MenuItem("フックを解除", callback=self.uninstall_hooks),
             None,
@@ -185,6 +190,7 @@ class LuminellaApp(rumps.App):
 
         for slot in self.session_slots:
             slot._menuitem.setHidden_(True)
+        self._refresh_rollback_item()
 
         self._watch_display_sleep()
 
@@ -198,6 +204,10 @@ class LuminellaApp(rumps.App):
             daemon.log("hook refresh failed\n%s" % traceback.format_exc())
 
         threading.Thread(target=self._run_daemon, daemon=True).start()
+
+        if self.cfg.get("check_updates", True):
+            # Off the main thread: a slow network must not hold up the icon.
+            threading.Thread(target=self._look_for_update, daemon=True).start()
 
     def _build_icons(self):
         """Draw every still icon, and a cycle of frames per working mark.
@@ -310,6 +320,7 @@ class LuminellaApp(rumps.App):
         )
 
         self._drain_notes()
+        self._drain_update()
 
         rows = self.daemon.session_list()
         padded = rows + [None] * len(self.session_slots)
@@ -484,6 +495,118 @@ class LuminellaApp(rumps.App):
         label = sender.title.split(" ", 1)[-1].split(" — ")[0]
         self.daemon.set_session_state(sid, "idle")
         self.notify("表示をリセット", "%s を待機中に戻しました" % label)
+
+    # ---- updates ---------------------------------------------------------
+
+    def _look_for_update(self, announce_none=False):
+        """Ask GitHub what the newest build is. Runs off the main thread."""
+        here = update.installed_version()
+        if not here:
+            if announce_none:
+                self._queue_update_note("ソースから起動しているため更新できません")
+            return
+        latest = update.latest_release()
+        if not latest:
+            if announce_none:
+                self._queue_update_note("更新を確認できませんでした")
+            return
+        if not update.is_newer(latest["version"], here):
+            if announce_none:
+                self._queue_update_note("最新版です（%s）" % here)
+            return
+        daemon.log("update: %s available, running %s" % (latest["version"], here))
+        with self._notes_lock:
+            self._pending_update = (latest, here)
+
+    def _queue_update_note(self, text):
+        with self._notes_lock:
+            self._pending_update_note = text
+
+    def _drain_update(self):
+        """Ask about an update, on the main thread where a dialog can open."""
+        with self._notes_lock:
+            note = self._pending_update_note
+            self._pending_update_note = None
+            pending = self._pending_update
+            self._pending_update = None
+        if note:
+            alert(APP_NAME, note)
+        if not pending:
+            return
+        latest, here = pending
+        if not alert(
+            APP_NAME,
+            "新しい版があります。\n\n"
+            "  いま: %s\n  新しい版: %s\n\n%s\n\n"
+            "ダウンロードして入れ替えますか。入れ替えのときに一度終了し、"
+            "すぐに起動し直します。" % (here, latest["version"], latest["name"]),
+            ok="更新する", cancel="あとで",
+        ):
+            return
+        threading.Thread(target=self._install_update, args=(latest,),
+                         daemon=True).start()
+
+    def _install_update(self, latest):
+        """Fetch and check the new build, then hand over to the swap script."""
+        self.notify("更新", "%s をダウンロードしています…" % latest["version"])
+        mine = update.team_id(update.app_path())
+        if not mine:
+            self._queue_update_note("この版の署名を確認できないため更新を中止しました")
+            return
+        staged = update.stage(latest["url"], mine, log=daemon.log)
+        if not staged:
+            self._queue_update_note(
+                "更新を中止しました。ダウンロードしたものを検証できません。\n"
+                "ログに理由が残っています。")
+            return
+        daemon.log("update: staged %s, handing over" % latest["version"])
+        if not update.swap_and_relaunch(staged, log_path=config.LOG_PATH,
+                                        log=daemon.log):
+            self._queue_update_note("入れ替えを開始できませんでした")
+            return
+        self.stopping = True
+        self.daemon.running = False
+        time.sleep(0.4)
+        rumps.quit_application()
+
+    def _refresh_rollback_item(self):
+        kept = update.kept_version()
+        self.item_rollback._menuitem.setHidden_(kept is None)
+        if kept:
+            self.item_rollback.title = "前の版に戻す（%s）" % kept
+
+    @guard
+    def rollback(self, _):
+        kept = update.kept_version()
+        if not kept:
+            alert(APP_NAME, "戻せる版はありません。")
+            return
+        if not alert(
+            APP_NAME,
+            "ひとつ前の版（%s）に戻します。\n\n"
+            "一度終了し、すぐに起動し直します。いま動いている版は、"
+            "次に戻せる版として控えに入れ替わります。" % kept,
+            ok="戻す", cancel="やめる",
+        ):
+            return
+        staged = update.stage_kept(log=daemon.log)
+        if not staged:
+            alert(APP_NAME, "控えを取り出せませんでした。ログをご確認ください。")
+            return
+        if not update.swap_and_relaunch(staged, log_path=config.LOG_PATH,
+                                        log=daemon.log):
+            alert(APP_NAME, "入れ替えを開始できませんでした。")
+            return
+        daemon.log("rollback: going back to %s" % kept)
+        self.stopping = True
+        self.daemon.running = False
+        time.sleep(0.4)
+        rumps.quit_application()
+
+    @guard
+    def check_update_now(self, _):
+        threading.Thread(target=self._look_for_update, args=(True,),
+                         daemon=True).start()
 
     # ---- settings window -------------------------------------------------
 
