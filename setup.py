@@ -24,8 +24,8 @@ OPTIONS = {
         "CFBundleName": "Clauminella",
         "CFBundleDisplayName": "Clauminella",
         "CFBundleIdentifier": "com.rabadi.clauminella",
-        "CFBundleVersion": "1.10.2",
-        "CFBundleShortVersionString": "1.10.2",
+        "CFBundleVersion": "1.11.0",
+        "CFBundleShortVersionString": "1.11.0",
         "LSUIElement": True,  # menu bar only: no Dock icon, no menu bar app menu
         # Push-to-talk records from the microphone; macOS requires this string
         # before it will even prompt, and denies silently without it.
