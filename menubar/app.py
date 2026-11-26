@@ -497,30 +497,56 @@ class LuminellaApp(rumps.App):
         self.notify("表示をリセット", "%s を待機中に戻しました" % label)
 
     # ---- updates ---------------------------------------------------------
+    #
+    # Follows GigowatUpdater, the component the other gigowat apps use: the
+    # same manifest, the same checks, the same three answers. Wording comes
+    # from its gwL(ja, en) pairs, picked the same way.
 
-    def _look_for_update(self, announce_none=False):
-        """Ask GitHub what the newest build is. Runs off the main thread."""
+    @staticmethod
+    def _l(ja, en):
+        """Japanese for a Japanese system, English otherwise."""
+        try:
+            from AppKit import NSLocale
+            first = (NSLocale.preferredLanguages() or ["en"])[0]
+        except Exception:
+            first = "en"
+        return ja if str(first).startswith("ja") else en
+
+    def _look_for_update(self, user_initiated=False):
+        """Read the manifest. Off the main thread; a dialog cannot open here."""
         here = update.installed_version()
         if not here:
-            if announce_none:
-                self._queue_update_note("ソースから起動しているため更新できません")
+            if user_initiated:
+                self._queue_update_note(
+                    self._l("更新を確かめられませんでした", "Couldn't check for updates"),
+                    self._l("ソースから起動しているため、自動更新できません。",
+                            "This copy runs from source, so it cannot update itself."))
             return
-        latest = update.latest_release()
-        if not latest:
-            if announce_none:
-                self._queue_update_note("更新を確認できませんでした")
+        manifest = update.latest()
+        if not manifest:
+            if user_initiated:
+                self._queue_update_note(
+                    self._l("更新を確かめられませんでした", "Couldn't check for updates"),
+                    self._l("ネットワークの接続を確かめて、あとでもう一度お試しください。",
+                            "Check your network connection and try again later."))
             return
-        if not update.is_newer(latest["version"], here):
-            if announce_none:
-                self._queue_update_note("最新版です（%s）" % here)
+        if not update.is_newer(manifest["version"], here):
+            if user_initiated:
+                self._queue_update_note(
+                    self._l("最新の版です", "You're up to date"),
+                    self._l("Clauminella %s は最新の版です。" % here,
+                            "Clauminella %s is the latest version." % here))
             return
-        daemon.log("update: %s available, running %s" % (latest["version"], here))
+        # A version put aside stays aside, unless the person asked just now.
+        if not user_initiated and update.skipped_version() == manifest["version"]:
+            return
+        update.log("update available: %s" % manifest["version"])
         with self._notes_lock:
-            self._pending_update = (latest, here)
+            self._pending_update = (manifest, here, user_initiated)
 
-    def _queue_update_note(self, text):
+    def _queue_update_note(self, title, body):
         with self._notes_lock:
-            self._pending_update_note = text
+            self._pending_update_note = (title, body)
 
     def _drain_update(self):
         """Ask about an update, on the main thread where a dialog can open."""
@@ -530,39 +556,99 @@ class LuminellaApp(rumps.App):
             pending = self._pending_update
             self._pending_update = None
         if note:
-            alert(APP_NAME, note)
+            alert(APP_NAME, "%s\n\n%s" % note)
         if not pending:
             return
-        latest, here = pending
-        if not alert(
-            APP_NAME,
-            "新しい版があります。\n\n"
-            "  いま: %s\n  新しい版: %s\n\n%s\n\n"
-            "ダウンロードして入れ替えますか。入れ替えのときに一度終了し、"
-            "すぐに起動し直します。" % (here, latest["version"], latest["name"]),
-            ok="更新する", cancel="あとで",
-        ):
+        manifest, here, user_initiated = pending
+
+        # Somewhere this copy cannot be replaced from: say so and offer the
+        # page, rather than download something that cannot be installed. Only
+        # when they asked -- a copy that can never update itself would
+        # otherwise raise the same dialog at every launch.
+        problem = update.location_problem()
+        if problem:
+            update.log("location refuses the swap: %s" % problem[:80])
+            if user_initiated:
+                self._offer_page(manifest, problem)
             return
-        threading.Thread(target=self._install_update, args=(latest,),
+
+        answer = update.test_answer()
+        if answer is not None:
+            update.log("test answer %d" % answer)
+        else:
+            answer = self._ask_about(manifest, here)
+            update.log("answered %s" % answer)
+        if answer == update.SKIP:
+            update.skip_version(manifest["version"])
+            update.log("skipped %s" % manifest["version"])
+            return
+        if answer != update.INSTALL:
+            return
+        threading.Thread(target=self._install_update, args=(manifest,),
                          daemon=True).start()
 
-    def _install_update(self, latest):
+    def _ask_about(self, manifest, here):
+        """The three-answer dialog. Returns update.INSTALL / LATER / SKIP."""
+        front()
+        window = rumps.Window(
+            title=APP_NAME,
+            message=self._l(
+                "Clauminella の新しい版 %s が出ています\n\n"
+                "いまお使いの版は %s です。ダウンロードしてインストールしますか？\n"
+                "インストールすると Clauminella をいったん終了し、新しい版で"
+                "起動し直します。" % (manifest["version"], here),
+                "A new version of Clauminella (%s) is available\n\n"
+                "You have %s. Download and install it?\n"
+                "Clauminella will quit and reopen on the new version."
+                % (manifest["version"], here)),
+            dimensions=(0, 0),
+        )
+        window.add_buttons(self._l("あとで", "Later"),
+                           self._l("この版はスキップ", "Skip This Version"))
+        window.default_text = ""
+        # rumps numbers buttons from 1: ok, then each added one in order.
+        clicked = window.run().clicked
+        return {1: update.INSTALL, 2: update.LATER, 3: update.SKIP}.get(clicked,
+                                                                        update.LATER)
+
+    def _offer_page(self, manifest, problem):
+        """Tell the person why it cannot be swapped, and point at the page."""
+        front()
+        if rumps.alert(
+            APP_NAME,
+            self._l("Clauminella %s が出ています\n\nいまお使いの版は %s です。\n\n%s"
+                    % (manifest["version"], update.installed_version(), problem),
+                    "Clauminella %s is available\n\nYou have %s.\n\n%s"
+                    % (manifest["version"], update.installed_version(), problem)),
+            ok=self._l("配布ページを開く", "Open Download Page"),
+            cancel=self._l("閉じる", "Close"),
+        ):
+            subprocess.run(["/usr/bin/open", manifest.get("page") or update.PAGE],
+                           check=False)
+
+    def _install_update(self, manifest):
         """Fetch and check the new build, then hand over to the swap script."""
-        self.notify("更新", "%s をダウンロードしています…" % latest["version"])
-        mine = update.team_id(update.app_path())
-        if not mine:
-            self._queue_update_note("この版の署名を確認できないため更新を中止しました")
-            return
-        staged = update.stage(latest["url"], mine, log=daemon.log)
+        self.notify(self._l("ダウンロードしています…", "Downloading…"),
+                    "Clauminella %s" % manifest["version"])
+        staged, problem = update.stage(manifest)
         if not staged:
+            update.log("refused: %s" % (problem or "?"))
             self._queue_update_note(
-                "更新を中止しました。ダウンロードしたものを検証できません。\n"
-                "ログに理由が残っています。")
+                self._l("更新できませんでした", "The update couldn't be installed"),
+                self._l("%s\n\nいまの版はそのまま使えます。配布ページから新しい版を"
+                        "入れることもできます。" % problem,
+                        "%s\n\nThe version you have still works. You can also "
+                        "install the new one from the download page." % problem))
             return
-        daemon.log("update: staged %s, handing over" % latest["version"])
-        if not update.swap_and_relaunch(staged, log_path=config.LOG_PATH,
-                                        log=daemon.log):
-            self._queue_update_note("入れ替えを開始できませんでした")
+        update.log("staged %s, handing over" % manifest["version"])
+        self.notify(self._l("インストールの準備ができました。再起動します…",
+                            "Ready. Restarting…"),
+                    "Clauminella %s" % manifest["version"])
+        if not update.swap_and_relaunch(staged):
+            self._queue_update_note(
+                self._l("更新できませんでした", "The update couldn't be installed"),
+                self._l("入れ替えを開始できませんでした。",
+                        "The replacement could not be started."))
             return
         self.stopping = True
         self.daemon.running = False
@@ -573,31 +659,35 @@ class LuminellaApp(rumps.App):
         kept = update.kept_version()
         self.item_rollback._menuitem.setHidden_(kept is None)
         if kept:
-            self.item_rollback.title = "前の版に戻す（%s）" % kept
+            self.item_rollback.title = self._l("前の版に戻す（%s）" % kept,
+                                               "Go Back to %s" % kept)
 
     @guard
     def rollback(self, _):
         kept = update.kept_version()
         if not kept:
-            alert(APP_NAME, "戻せる版はありません。")
+            alert(APP_NAME, self._l("戻せる版はありません。",
+                                    "There is no earlier version to go back to."))
             return
         if not alert(
             APP_NAME,
-            "ひとつ前の版（%s）に戻します。\n\n"
-            "一度終了し、すぐに起動し直します。いま動いている版は、"
-            "次に戻せる版として控えに入れ替わります。" % kept,
-            ok="戻す", cancel="やめる",
+            self._l("ひとつ前の版（%s）に戻します。\n\n一度終了し、すぐに起動し直します。"
+                    "いま動いている版は、次に戻せる版として控えに入れ替わります。" % kept,
+                    "Going back to %s.\n\nClauminella will quit and reopen. The "
+                    "version running now becomes the one you can go back to." % kept),
+            ok=self._l("戻す", "Go Back"), cancel=self._l("やめる", "Cancel"),
         ):
             return
-        staged = update.stage_kept(log=daemon.log)
+        staged = update.stage_kept()
         if not staged:
-            alert(APP_NAME, "控えを取り出せませんでした。ログをご確認ください。")
+            alert(APP_NAME, self._l("控えを取り出せませんでした。",
+                                    "The kept version could not be read."))
             return
-        if not update.swap_and_relaunch(staged, log_path=config.LOG_PATH,
-                                        log=daemon.log):
-            alert(APP_NAME, "入れ替えを開始できませんでした。")
+        if not update.swap_and_relaunch(staged):
+            alert(APP_NAME, self._l("入れ替えを開始できませんでした。",
+                                    "The replacement could not be started."))
             return
-        daemon.log("rollback: going back to %s" % kept)
+        update.log("rollback to %s" % kept)
         self.stopping = True
         self.daemon.running = False
         time.sleep(0.4)
